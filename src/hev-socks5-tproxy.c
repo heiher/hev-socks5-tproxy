@@ -54,7 +54,7 @@ hev_socks5_tproxy_init (void)
 	}
 
 	if (dns_listen_address[0]) {
-		task_tproxy_dns = hev_task_new (4096);
+		task_tproxy_dns = hev_task_new (8192);
 		if (!task_tproxy_dns) {
 			fprintf (stderr, "Create tproxy dns's task failed!\n");
 			return -1;
@@ -223,8 +223,19 @@ hev_socks5_tproxy_task_dns_entry (void *data)
 
 	for (;;) {
 		HevSocks5Session *session;
+		unsigned char buf[2048];
+		ssize_t len;
 
-		/* prepare a session for dns forward */
+		len = recvfrom (fd, buf, 2048, MSG_PEEK, NULL, NULL);
+		if (len == -1) {
+			if (errno == EAGAIN) {
+				hev_task_yield (HEV_TASK_WAITIO);
+				continue;
+			}
+
+			break;
+		}
+
 		session = hev_socks5_session_new_dns (fd, session_close_handler, NULL);
 		if (!session)
 			continue;
