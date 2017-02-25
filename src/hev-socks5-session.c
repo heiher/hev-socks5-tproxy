@@ -167,12 +167,12 @@ hev_socks5_session_new_dns (int client_fd,
 	/* recv dns request */
 	addr = (struct sockaddr *) &self->address;
 	addr_len = sizeof (self->address);
-retry:
 	s = recvfrom (client_fd, self->dns_request, 2048, 0, addr, &addr_len);
 	if (s == -1) {
-		if (errno == EAGAIN)
-			hev_task_yield (HEV_TASK_WAITIO);
-		goto retry;
+		hev_free (self->dns_request);
+		hev_task_unref (self->base.task);
+		hev_free (self);
+		return NULL;
 	}
 
 #ifdef _DEBUG
