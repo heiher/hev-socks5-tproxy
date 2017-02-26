@@ -84,6 +84,10 @@ hev_socks5_tproxy_init (void)
 void
 hev_socks5_tproxy_fini (void)
 {
+	quit = 0;
+	event_fd = -1;
+	task_tproxy_tcp = NULL;
+	task_tproxy_dns = NULL;
 }
 
 void
