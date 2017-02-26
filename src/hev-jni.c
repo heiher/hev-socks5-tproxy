@@ -20,7 +20,7 @@
 #define N_ELEMENTS(arr)		(sizeof (arr) / sizeof ((arr)[0]))
 
 static JavaVM *java_vm;
-static pthread_t service;
+static pthread_t work_thread;
 static pthread_key_t current_jni_env;
 
 static void native_start_service (JNIEnv *env, jobject thiz, jstring conig_path);
@@ -69,6 +69,7 @@ thread_handler (void *data)
 
 	free (argv[1]);
 	free (argv);
+	work_thread = 0;
 
 	return NULL;
 }
@@ -85,14 +86,17 @@ native_start_service (JNIEnv *env, jobject thiz, jstring config_path)
 	argv[1] = strdup (bytes);
 	(*env)->ReleaseStringUTFChars (env, config_path, bytes);
 
-	pthread_create (&service, NULL, thread_handler, argv);
+	pthread_create (&work_thread, NULL, thread_handler, argv);
 }
 
 static void
 native_stop_service (JNIEnv *env, jobject thiz)
 {
-	if (service)
-	  pthread_kill (service, SIGINT);
+	if (!work_thread)
+		return;
+
+	quit ();
+	pthread_join (work_thread, NULL);
 }
 
 #endif
