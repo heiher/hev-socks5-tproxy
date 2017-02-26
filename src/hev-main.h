@@ -10,5 +10,7 @@
 #ifndef __HEV_MAIN_H__
 #define __HEV_MAIN_H__
 
+void quit (void);
+
 #endif /* __HEV_MAIN_H__ */
 

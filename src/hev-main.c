@@ -27,7 +27,7 @@ show_help (const char *self_path)
 static void
 sigint_handler (int signum)
 {
-	hev_socks5_tproxy_stop ();
+	quit ();
 }
 
 int
@@ -64,5 +64,11 @@ main (int argc, char *argv[])
 	hev_config_fini ();
 
 	return 0;
+}
+
+void
+quit (void)
+{
+	hev_socks5_tproxy_stop ();
 }
 
