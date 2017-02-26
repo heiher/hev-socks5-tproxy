@@ -76,7 +76,7 @@ hev_socks5_tproxy_fini (void)
 }
 
 void
-hev_socks5_tproxy_run (void)
+hev_socks5_tproxy_start (void)
 {
 	if (task_tproxy_tcp)
 		hev_task_run (task_tproxy_tcp, hev_socks5_tproxy_task_tcp_entry, NULL);

@@ -43,7 +43,7 @@ main (int argc, char *argv[])
 
 	if (0 > hev_socks5_tproxy_init ())
 		return -4;
-	hev_socks5_tproxy_run ();
+	hev_socks5_tproxy_start ();
 
 	hev_task_system_run ();
 
