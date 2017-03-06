@@ -13,6 +13,8 @@
 #include "hev-config.h"
 #include "hev-config-const.h"
 
+static unsigned int workers;
+
 static char socks5_address[16];
 static unsigned short socks5_port;
 
@@ -75,6 +77,11 @@ hev_config_init (const char *config_path)
 		return -4;
 	}
 
+	/* Main:Workers */
+	workers = iniparser_getint (ini_dict, "Main:Workers", 1);
+	if (workers <= 0)
+		workers = 1;
+
 	iniparser_freedict (ini_dict);
 
 	return 0;
@@ -83,6 +90,12 @@ hev_config_init (const char *config_path)
 void
 hev_config_fini (void)
 {
+}
+
+unsigned int
+hev_config_get_workers (void)
+{
+	return workers;
 }
 
 const char *
