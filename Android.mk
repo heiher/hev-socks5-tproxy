@@ -25,6 +25,7 @@ LOCAL_SRC_FILES := \
 	src/hev-main.c \
 	src/hev-config.c \
 	src/hev-socks5-tproxy.c \
+	src/hev-socks5-worker.c \
 	src/hev-socks5-session.c
 LOCAL_C_INCLUDES := \
 	$(LOCAL_PATH)/third-part/ini-parser/src \
