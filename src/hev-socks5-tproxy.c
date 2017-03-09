@@ -11,71 +11,71 @@
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
+#include <pthread.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
-#include <sys/eventfd.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
 #include "hev-socks5-tproxy.h"
-#include "hev-socks5-session.h"
+#include "hev-socks5-worker.h"
 #include "hev-config.h"
-#include "hev-task.h"
+#include "hev-task-system.h"
+#include "hev-memory-allocator.h"
 
-#define TIMEOUT		(30 * 1000)
+static int fd_tcp = -1;
+static int fd_dns = -1;
+static unsigned int workers;
+static HevSocks5Worker **worker_list;
 
-static void hev_socks5_tproxy_task_tcp_entry (void *data);
-static void hev_socks5_tproxy_task_dns_entry (void *data);
-static void hev_socks5_event_task_entry (void *data);
-static void hev_socks5_session_manager_task_entry (void *data);
-
-static void session_manager_insert_session (HevSocks5Session *session);
-static void session_manager_remove_session (HevSocks5Session *session);
-static void session_close_handler (HevSocks5Session *session, void *data);
-
-static int quit;
-static int event_fd = -1;
-static HevTask *task_tproxy_tcp;
-static HevTask *task_tproxy_dns;
-static HevTask *task_event;
-static HevTask *task_session_manager;
-static HevSocks5SessionBase *session_list;
+static void sigint_handler (int signum);
+static void * work_thread_handler (void *data);
+static int hev_socks5_tproxy_tcp_init (void);
+static int hev_socks5_tproxy_dns_init (void);
 
 int
 hev_socks5_tproxy_init (void)
 {
-	const char *tcp_listen_address;
-	const char *dns_listen_address;
-
-	tcp_listen_address = hev_config_get_tcp_listen_address ();
-	dns_listen_address = hev_config_get_dns_listen_address ();
-
-	if (tcp_listen_address[0]) {
-		task_tproxy_tcp = hev_task_new (4096);
-		if (!task_tproxy_tcp) {
-			fprintf (stderr, "Create tproxy tcp's task failed!\n");
-			return -1;
-		}
-	}
-
-	if (dns_listen_address[0]) {
-		task_tproxy_dns = hev_task_new (8192);
-		if (!task_tproxy_dns) {
-			fprintf (stderr, "Create tproxy dns's task failed!\n");
-			return -1;
-		}
-	}
-
-	task_event = hev_task_new (4096);
-	if (!task_event) {
-		fprintf (stderr, "Create event's task failed!\n");
+	if (hev_task_system_init () < 0) {
+		fprintf (stderr, "Init task system failed!\n");
 		return -1;
 	}
 
-	task_session_manager = hev_task_new (4096);
-	if (!task_session_manager) {
-		fprintf (stderr, "Create session manager's task failed!\n");
-		return -1;
+	fd_tcp = hev_socks5_tproxy_tcp_init ();
+	fd_dns = hev_socks5_tproxy_dns_init ();
+	if (fd_tcp < 0 && fd_dns < 0) {
+		fprintf (stderr, "TCP and DNS listen failed!\n");
+		return -2;
+	}
+
+	if (signal (SIGPIPE, SIG_IGN) == SIG_ERR) {
+		fprintf (stderr, "Set signal pipe's handler failed!\n");
+		if (fd_tcp >= 0)
+			close (fd_tcp);
+		if (fd_dns >= 0)
+			close (fd_dns);
+		return -3;
+	}
+
+	if (signal (SIGINT, sigint_handler) == SIG_ERR) {
+		fprintf (stderr, "Set signal int's handler failed!\n");
+		if (fd_tcp >= 0)
+			close (fd_tcp);
+		if (fd_dns >= 0)
+			close (fd_dns);
+		return -4;
+	}
+
+	workers = hev_config_get_workers ();
+	worker_list = hev_malloc0 (sizeof (HevSocks5Worker *) * workers);
+	if (!worker_list) {
+		fprintf (stderr, "Allocate worker list failed!\n");
+		if (fd_tcp >= 0)
+			close (fd_tcp);
+		if (fd_dns >= 0)
+			close (fd_dns);
+		return -5;
 	}
 
 	return 0;
@@ -84,60 +84,107 @@ hev_socks5_tproxy_init (void)
 void
 hev_socks5_tproxy_fini (void)
 {
-	quit = 0;
-	event_fd = -1;
-	task_tproxy_tcp = NULL;
-	task_tproxy_dns = NULL;
+	hev_free (worker_list);
+	if (fd_tcp >= 0)
+		close (fd_tcp);
+	if (fd_dns >= 0)
+		close (fd_dns);
+	hev_task_system_fini ();
 }
 
-void
-hev_socks5_tproxy_start (void)
+int
+hev_socks5_tproxy_run (void)
 {
-	if (task_tproxy_tcp)
-		hev_task_run (task_tproxy_tcp, hev_socks5_tproxy_task_tcp_entry, NULL);
-	if (task_tproxy_dns)
-		hev_task_run (task_tproxy_dns, hev_socks5_tproxy_task_dns_entry, NULL);
-	hev_task_run (task_event, hev_socks5_event_task_entry, NULL);
-	hev_task_run (task_session_manager, hev_socks5_session_manager_task_entry, NULL);
+	int i;
+	pthread_t work_threads[workers];
+
+	worker_list[0] = hev_socks5_worker_new (fd_tcp, fd_dns);
+	if (!worker_list[0]) {
+		fprintf (stderr, "Create socks5 worker 0 failed!\n");
+		return -1;
+	}
+
+	hev_socks5_worker_start (worker_list[0]);
+
+	for (i=1; i<workers; i++) {
+		pthread_create (&work_threads[i], NULL, work_thread_handler,
+					(void *) (intptr_t) i);
+	}
+
+	hev_task_system_run ();
+
+	for (i=1; i<workers; i++) {
+		pthread_join (work_threads[i], NULL);
+	}
+
+	hev_socks5_worker_destroy (worker_list[0]);
+
+	return 0;
 }
 
 void
 hev_socks5_tproxy_stop (void)
 {
-	if (event_fd == -1)
-		return;
+	int i;
 
-	if (eventfd_write (event_fd, 1) == -1)
-		fprintf (stderr, "Write stop event failed!\n");
-}
+	for (i=0; i<workers; i++) {
+		if (!worker_list[i])
+			continue;
 
-static int
-task_socket_accept (int fd, struct sockaddr *addr, socklen_t *addr_len)
-{
-	int new_fd;
-retry:
-	new_fd = accept (fd, addr, addr_len);
-	if (new_fd == -1 && errno == EAGAIN) {
-		hev_task_yield (HEV_TASK_WAITIO);
-		if (quit)
-			return -2;
-		goto retry;
+		hev_socks5_worker_stop (worker_list[i]);
 	}
-
-	return new_fd;
 }
 
 static void
-hev_socks5_tproxy_task_tcp_entry (void *data)
+sigint_handler (int signum)
 {
-	HevTask *task = hev_task_self ();
-	int fd, ret, nonblock = 1, reuseaddr = 1;
+	hev_socks5_tproxy_stop ();
+}
+
+static void *
+work_thread_handler (void *data)
+{
+	int i = (intptr_t) data;
+
+	if (hev_task_system_init () < 0) {
+		fprintf (stderr, "Init task system failed!\n");
+		return NULL;
+	}
+
+	worker_list[i] = hev_socks5_worker_new (fd_tcp, fd_dns);
+	if (!worker_list[i]) {
+		fprintf (stderr, "Create socks5 worker %d failed!\n", i);
+		hev_task_system_fini ();
+		return NULL;
+	}
+
+	hev_socks5_worker_start (worker_list[i]);
+
+	hev_task_system_run ();
+
+	hev_socks5_worker_destroy (worker_list[i]);
+
+	hev_task_system_fini ();
+
+	return NULL;
+}
+
+static int
+hev_socks5_tproxy_tcp_init (void)
+{
+	int ret, fd, nonblock = 1, reuseaddr = 1;
 	struct sockaddr_in addr;
+	const char *address;
+
+	address = hev_config_get_tcp_listen_address ();
+	if (!address[0]) {
+		return -1;
+	}
 
 	fd = socket (AF_INET, SOCK_STREAM, 0);
 	if (fd == -1) {
 		fprintf (stderr, "Create socket failed!\n");
-		return;
+		return -2;
 	}
 
 	ret = setsockopt (fd, SOL_SOCKET, SO_REUSEADDR,
@@ -145,83 +192,51 @@ hev_socks5_tproxy_task_tcp_entry (void *data)
 	if (ret == -1) {
 		fprintf (stderr, "Set reuse address failed!\n");
 		close (fd);
-		return;
+		return -3;
 	}
 	ret = ioctl (fd, FIONBIO, (char *) &nonblock);
 	if (ret == -1) {
 		fprintf (stderr, "Set non-blocking failed!\n");
 		close (fd);
-		return;
+		return -4;
 	}
 
 	memset (&addr, 0, sizeof (addr));
 	addr.sin_family = AF_INET;
-	addr.sin_addr.s_addr = inet_addr (hev_config_get_tcp_listen_address ());
+	addr.sin_addr.s_addr = inet_addr (address);
 	addr.sin_port = htons (hev_config_get_tcp_port ());
 	ret = bind (fd, (struct sockaddr *) &addr, (socklen_t) sizeof (addr));
 	if (ret == -1) {
 		fprintf (stderr, "Bind address failed!\n");
 		close (fd);
-		return;
+		return -5;
 	}
 	ret = listen (fd, 100);
 	if (ret == -1) {
 		fprintf (stderr, "Listen failed!\n");
 		close (fd);
-		return;
+		return -6;
 	}
 
-	hev_task_add_fd (task, fd, EPOLLIN);
-
-	for (;;) {
-		int tproxy_fd;
-		struct sockaddr *in_addr = (struct sockaddr *) &addr;
-		socklen_t addr_len = sizeof (addr);
-		HevSocks5Session *session;
-
-		tproxy_fd = task_socket_accept (fd, in_addr, &addr_len);
-		if (-1 == tproxy_fd) {
-			fprintf (stderr, "Accept failed!\n");
-			continue;
-		} else if (-2 == tproxy_fd) {
-			break;
-		}
-
-#ifdef _DEBUG
-		printf ("New client %d enter from %s:%u\n", tproxy_fd,
-					inet_ntoa (addr.sin_addr), ntohs (addr.sin_port));
-#endif
-
-		ret = ioctl (tproxy_fd, FIONBIO, (char *) &nonblock);
-		if (ret == -1) {
-			fprintf (stderr, "Set non-blocking failed!\n");
-			close (tproxy_fd);
-		}
-
-		session = hev_socks5_session_new_tcp (tproxy_fd, session_close_handler, NULL);
-		if (!session) {
-			close (tproxy_fd);
-			continue;
-		}
-
-		session_manager_insert_session (session);
-		hev_socks5_session_run (session);
-	}
-
-	close (fd);
+	return fd;
 }
 
-static void
-hev_socks5_tproxy_task_dns_entry (void *data)
+static int
+hev_socks5_tproxy_dns_init (void)
 {
-	HevTask *task = hev_task_self ();
-	int fd, ret, nonblock = 1, reuseaddr = 1;
+	int ret, fd, nonblock = 1, reuseaddr = 1;
 	struct sockaddr_in addr;
+	const char *address;
+
+	address = hev_config_get_dns_listen_address ();
+	if (!address[0]) {
+		return -1;
+	}
 
 	fd = socket (AF_INET, SOCK_DGRAM, 0);
 	if (fd == -1) {
 		fprintf (stderr, "Create socket failed!\n");
-		return;
+		return -2;
 	}
 
 	ret = setsockopt (fd, SOL_SOCKET, SO_REUSEADDR,
@@ -229,180 +244,26 @@ hev_socks5_tproxy_task_dns_entry (void *data)
 	if (ret == -1) {
 		fprintf (stderr, "Set reuse address failed!\n");
 		close (fd);
-		return;
+		return -3;
 	}
 	ret = ioctl (fd, FIONBIO, (char *) &nonblock);
 	if (ret == -1) {
 		fprintf (stderr, "Set non-blocking failed!\n");
 		close (fd);
-		return;
+		return -4;
 	}
 
 	memset (&addr, 0, sizeof (addr));
 	addr.sin_family = AF_INET;
-	addr.sin_addr.s_addr = inet_addr (hev_config_get_dns_listen_address ());
+	addr.sin_addr.s_addr = inet_addr (address);
 	addr.sin_port = htons (hev_config_get_dns_port ());
 	ret = bind (fd, (struct sockaddr *) &addr, (socklen_t) sizeof (addr));
 	if (ret == -1) {
 		fprintf (stderr, "Bind address failed!\n");
 		close (fd);
-		return;
+		return -5;
 	}
 
-	hev_task_add_fd (task, fd, EPOLLIN);
-
-	for (;;) {
-		HevSocks5Session *session;
-		unsigned char buf[2048];
-		ssize_t len;
-
-		len = recvfrom (fd, buf, 2048, MSG_PEEK, NULL, NULL);
-		if (len == -1) {
-			if (errno == EAGAIN) {
-				hev_task_yield (HEV_TASK_WAITIO);
-				if (quit)
-					break;
-				continue;
-			}
-
-			break;
-		}
-
-		session = hev_socks5_session_new_dns (fd, session_close_handler, NULL);
-		if (!session)
-			continue;
-
-		session_manager_insert_session (session);
-		hev_socks5_session_run (session);
-	}
-
-	close (fd);
-}
-
-static void
-hev_socks5_event_task_entry (void *data)
-{
-	HevTask *task = hev_task_self ();
-	ssize_t size;
-	HevSocks5SessionBase *session;
-
-	event_fd = eventfd (0, EFD_NONBLOCK);
-	if (-1 == event_fd) {
-		fprintf (stderr, "Create eventfd failed!\n");
-		return;
-	}
-
-	hev_task_add_fd (task, event_fd, EPOLLIN);
-
-	for (;;) {
-		eventfd_t val;
-		size = eventfd_read (event_fd, &val);
-		if (-1 == size && errno == EAGAIN) {
-			hev_task_yield (HEV_TASK_WAITIO);
-			continue;
-		}
-		break;
-	}
-
-	/* set quit flag */
-	quit = 1;
-	/* wakeup tproxy tcp's task */
-	if (task_tproxy_tcp)
-		hev_task_wakeup (task_tproxy_tcp);
-	/* wakeup tproxy dns's task */
-	if (task_tproxy_dns)
-		hev_task_wakeup (task_tproxy_dns);
-	/* wakeup session manager's task */
-	hev_task_wakeup (task_session_manager);
-
-	/* wakeup sessions's task */
-#ifdef _DEBUG
-	printf ("Enumerating session list ...\n");
-#endif
-	for (session=session_list; session; session=session->next) {
-#ifdef _DEBUG
-		printf ("Set session %p's hp = 0\n", session);
-#endif
-		session->hp = 0;
-
-		/* wakeup session's task to do destroy */
-		hev_task_wakeup (session->task);
-#ifdef _DEBUG
-		printf ("Wakeup session %p's task %p\n", session, session->task);
-#endif
-	}
-
-	close (event_fd);
-}
-
-static void
-hev_socks5_session_manager_task_entry (void *data)
-{
-	for (;;) {
-		HevSocks5SessionBase *session;
-
-		hev_task_sleep (TIMEOUT);
-		if (quit)
-			break;
-
-#ifdef _DEBUG
-		printf ("Enumerating session list ...\n");
-#endif
-		for (session=session_list; session; session=session->next) {
-#ifdef _DEBUG
-			printf ("Session %p's hp %d\n", session, session->hp);
-#endif
-			session->hp --;
-			if (session->hp > 0)
-				continue;
-
-			/* wakeup session's task to do destroy */
-			hev_task_wakeup (session->task);
-#ifdef _DEBUG
-			printf ("Wakeup session %p's task %p\n", session, session->task);
-#endif
-		}
-	}
-}
-
-static void
-session_manager_insert_session (HevSocks5Session *session)
-{
-	HevSocks5SessionBase *session_base = (HevSocks5SessionBase *) session;
-
-#ifdef _DEBUG
-	printf ("Insert session: %p\n", session);
-#endif
-	/* insert session to session_list */
-	session_base->prev = NULL;
-	session_base->next = session_list;
-	if (session_list)
-		session_list->prev = session_base;
-	session_list = session_base;
-}
-
-static void
-session_manager_remove_session (HevSocks5Session *session)
-{
-	HevSocks5SessionBase *session_base = (HevSocks5SessionBase *) session;
-
-#ifdef _DEBUG
-	printf ("Remove session: %p\n", session);
-#endif
-	/* remove session from session_list */
-	if (session_base->prev) {
-		session_base->prev->next = session_base->next;
-	} else {
-		session_list = session_base->next;
-	}
-	if (session_base->next) {
-		session_base->next->prev = session_base->prev;
-	}
-}
-
-static void
-session_close_handler (HevSocks5Session *session, void *data)
-{
-	session_manager_remove_session (session);
+	return fd;
 }
 
