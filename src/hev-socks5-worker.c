@@ -66,7 +66,7 @@ hev_socks5_worker_new (int fd_tcp, int fd_dns)
 	self->event_fd = -1;
 
 	if (fd_tcp >= 0) {
-		self->task_worker_tcp = hev_task_new (4096);
+		self->task_worker_tcp = hev_task_new (8192);
 		if (!self->task_worker_tcp) {
 			fprintf (stderr, "Create worker tcp's task failed!\n");
 			hev_free (self);
@@ -75,7 +75,7 @@ hev_socks5_worker_new (int fd_tcp, int fd_dns)
 	}
 
 	if (fd_dns >= 0) {
-		self->task_worker_dns = hev_task_new (4096);
+		self->task_worker_dns = hev_task_new (8192);
 		if (!self->task_worker_dns) {
 			fprintf (stderr, "Create worker dns's task failed!\n");
 			if (self->task_worker_tcp)
@@ -85,7 +85,7 @@ hev_socks5_worker_new (int fd_tcp, int fd_dns)
 		}
 	}
 
-	self->task_event = hev_task_new (4096);
+	self->task_event = hev_task_new (8192);
 	if (!self->task_event) {
 		fprintf (stderr, "Create event's task failed!\n");
 		if (self->task_worker_tcp)
@@ -96,7 +96,7 @@ hev_socks5_worker_new (int fd_tcp, int fd_dns)
 		return NULL;
 	}
 
-	self->task_session_manager = hev_task_new (4096);
+	self->task_session_manager = hev_task_new (8192);
 	if (!self->task_session_manager) {
 		fprintf (stderr, "Create session manager's task failed!\n");
 		hev_task_unref (self->task_event);
