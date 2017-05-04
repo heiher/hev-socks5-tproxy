@@ -1,4 +1,4 @@
-#HevSocks5Tproxy
+# HevSocks5Tproxy
 
 HevSocks5Tproxy is a simple, lightweight transparent proxy for Linux.
 
@@ -6,7 +6,7 @@ HevSocks5Tproxy is a simple, lightweight transparent proxy for Linux.
 * Redirect TCP connections.
 * Redirect DNS queries.
 
-##How to Build
+## How to Build
 
 **Linux**:
 ```bash
@@ -31,6 +31,6 @@ nkd-build
 ## Authors
 * **Heiher** - https://hev.cc
 
-##License
+## License
 LGPL
 
