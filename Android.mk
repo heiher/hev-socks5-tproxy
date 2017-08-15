@@ -14,8 +14,13 @@
 #
 
 TOP_PATH := $(call my-dir)
-include $(TOP_PATH)/third-part/ini-parser/Android.mk
-include $(TOP_PATH)/third-part/hev-task-system/Android.mk
+
+ifeq ($(filter $(modules-get-list),ini-parser),)
+    include $(TOP_PATH)/third-part/ini-parser/Android.mk
+endif
+ifeq ($(filter $(modules-get-list),hev-task-system),)
+     include $(TOP_PATH)/third-part/hev-task-system/Android.mk
+endif
 
 LOCAL_PATH = $(TOP_PATH)
 include $(CLEAR_VARS)
