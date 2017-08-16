@@ -47,7 +47,7 @@ hev_config_init (const char *config_path)
 
 	/* Socks5:Port */
 	socks5_port = iniparser_getint (ini_dict, "Socks5:Port", -1);
-	if (-1 == socks5_port) {
+	if (-1 == (short) socks5_port) {
 		fprintf (stderr, "Get Socks5:Port from file %s failed!\n",
 					config_path);
 		iniparser_freedict (ini_dict);
