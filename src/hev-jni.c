@@ -89,9 +89,9 @@ native_start_service (JNIEnv *env, jobject thiz, jstring config_path)
 
 	argv = malloc (sizeof (char *) * 2);
 
-	bytes = (*env)->GetStringUTFChars (env, config_path, NULL);
-	argv[1] = strdup (bytes);
-	(*env)->ReleaseStringUTFChars (env, config_path, bytes);
+	bytes = (const signed char *) (*env)->GetStringUTFChars (env, config_path, NULL);
+	argv[1] = strdup ((const char *) bytes);
+	(*env)->ReleaseStringUTFChars (env, config_path, (const char *) bytes);
 
 	pthread_create (&work_thread, NULL, thread_handler, argv);
 }
