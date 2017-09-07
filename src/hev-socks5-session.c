@@ -125,17 +125,35 @@ hev_socks5_session_new_tcp (int client_fd,
 {
 	HevSocks5Session *self;
 	struct sockaddr *addr;
+	struct sockaddr_in sock_addr;
 	socklen_t addr_len;
 
 	self = hev_socks5_session_new (client_fd, notify, notify_data);
 	if (!self)
 		return NULL;
 
+	/* get socket address */
+	addr = (struct sockaddr *) &sock_addr;
+	addr_len = sizeof (sock_addr);
+	if (getsockname (client_fd, addr, &addr_len) == -1) {
+		hev_task_unref (self->base.task);
+		hev_free (self);
+		return NULL;
+	}
+
 	/* get original address */
 	addr = (struct sockaddr *) &self->address;
 	addr_len = sizeof (self->address);
 	if (getsockopt (client_fd, SOL_IP, SO_ORIGINAL_DST,
 					addr, &addr_len) == -1) {
+		hev_task_unref (self->base.task);
+		hev_free (self);
+		return NULL;
+	}
+
+	/* check is connect to self */
+	if ((sock_addr.sin_port == self->address.sin_port) &&
+			(sock_addr.sin_addr.s_addr == self->address.sin_addr.s_addr)) {
 		hev_task_unref (self->base.task);
 		hev_free (self);
 		return NULL;
