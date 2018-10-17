@@ -43,7 +43,7 @@ hev_config_init (const char *config_path)
         iniparser_freedict (ini_dict);
         return -2;
     }
-    strncpy (socks5_address, address, 16);
+    strncpy (socks5_address, address, 15);
 
     /* Socks5:Port */
     socks5_port = iniparser_getint (ini_dict, "Socks5:Port", -1);
@@ -56,7 +56,7 @@ hev_config_init (const char *config_path)
     /* TCP:ListenAddress */
     address = iniparser_getstring (ini_dict, "TCP:ListenAddress", NULL);
     if (address)
-        strncpy (tcp_listen_address, address, 16);
+        strncpy (tcp_listen_address, address, 15);
 
     /* TCP:Port */
     tcp_port = iniparser_getint (ini_dict, "TCP:Port", -1);
@@ -64,7 +64,7 @@ hev_config_init (const char *config_path)
     /* DNS:ListenAddress */
     address = iniparser_getstring (ini_dict, "DNS:ListenAddress", NULL);
     if (address)
-        strncpy (dns_listen_address, address, 16);
+        strncpy (dns_listen_address, address, 15);
 
     /* DNS:Port */
     dns_port = iniparser_getint (ini_dict, "DNS:Port", -1);
