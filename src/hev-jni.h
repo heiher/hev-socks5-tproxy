@@ -11,4 +11,3 @@
 #define __HEV_JNI_H__
 
 #endif /* __HEV_JNI_H__ */
-
