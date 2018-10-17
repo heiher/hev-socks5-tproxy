@@ -17,4 +17,3 @@ int hev_socks5_tproxy_run (void);
 void hev_socks5_tproxy_stop (void);
 
 #endif /* __HEV_SOCKS5_TPROXY_H__ */
-
