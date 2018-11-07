@@ -18,9 +18,11 @@
 #include "hev-jni.h"
 #include "hev-main.h"
 
+/* clang-format off */
 #ifndef PKGNAME
-#define PKGNAME hev / htproxy
+#define PKGNAME hev/htproxy
 #endif
+/* clang-format on */
 
 #define STR(s) STR_ARG (s)
 #define STR_ARG(c) #c
