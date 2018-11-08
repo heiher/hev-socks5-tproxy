@@ -1,4 +1,4 @@
-# Copyright (C) 2017 The Android Open Source Project
+# Copyright (C) 2018 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,29 +19,21 @@ ifeq ($(filter $(modules-get-list),ini-parser),)
     include $(TOP_PATH)/third-part/ini-parser/Android.mk
 endif
 ifeq ($(filter $(modules-get-list),hev-task-system),)
-     include $(TOP_PATH)/third-part/hev-task-system/Android.mk
-endif
-ifeq ($(filter $(modules-get-list),hev-task-io),)
-     include $(TOP_PATH)/third-part/hev-task-io/Android.mk
+    include $(TOP_PATH)/third-part/hev-task-system/Android.mk
 endif
 
 LOCAL_PATH = $(TOP_PATH)
+SRCDIR := $(LOCAL_PATH)/src
+
 include $(CLEAR_VARS)
+include $(LOCAL_PATH)/build.mk
 LOCAL_MODULE    := hev-socks5-tproxy
-LOCAL_SRC_FILES := \
-	src/hev-jni.c \
-	src/hev-main.c \
-	src/hev-config.c \
-	src/hev-socks5-tproxy.c \
-	src/hev-socks5-worker.c \
-	src/hev-socks5-session.c
+LOCAL_SRC_FILES := $(patsubst $(SRCDIR)/%,src/%,$(SRCFILES))
 LOCAL_C_INCLUDES := \
 	$(LOCAL_PATH)/third-part/ini-parser/src \
-	$(LOCAL_PATH)/third-part/hev-task-system/include \
-	$(LOCAL_PATH)/third-part/hev-task-io/include
+	$(LOCAL_PATH)/third-part/hev-task-system/include
 ifeq ($(TARGET_ARCH_ABI),armeabi-v7a)
 LOCAL_CFLAGS += -mfpu=neon
 endif
-LOCAL_STATIC_LIBRARIES := ini-parser hev-task-system hev-task-io
+LOCAL_STATIC_LIBRARIES := ini-parser hev-task-system
 include $(BUILD_SHARED_LIBRARY)
-
