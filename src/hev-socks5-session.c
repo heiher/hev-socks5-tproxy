@@ -251,16 +251,12 @@ static int
 socks5_do_connect (HevSocks5Session *self)
 {
     HevTask *task;
-    int ret, nonblock = 1;
     struct sockaddr_in addr;
     socklen_t addr_len = sizeof (struct sockaddr_in);
+    int ret;
 
-    self->remote_fd = socket (AF_INET, SOCK_STREAM, 0);
+    self->remote_fd = hev_task_io_socket_socket (AF_INET, SOCK_STREAM, 0);
     if (self->remote_fd == -1)
-        return STEP_CLOSE_SESSION;
-
-    ret = ioctl (self->remote_fd, FIONBIO, (char *)&nonblock);
-    if (ret == -1)
         return STEP_CLOSE_SESSION;
 
     task = hev_task_self ();
