@@ -21,6 +21,9 @@
 #include "hev-socks5-tproxy.h"
 #include "hev-socks5-worker.h"
 #include "hev-config.h"
+#include "hev-task.h"
+#include "hev-task-io.h"
+#include "hev-task-io-socket.h"
 #include "hev-task-system.h"
 #include "hev-memory-allocator.h"
 
@@ -172,7 +175,7 @@ work_thread_handler (void *data)
 static int
 hev_socks5_tproxy_tcp_init (void)
 {
-    int ret, fd, nonblock = 1, reuseaddr = 1;
+    int ret, fd, reuseaddr = 1;
     struct sockaddr_in addr;
     const char *address;
 
@@ -181,7 +184,7 @@ hev_socks5_tproxy_tcp_init (void)
         return -1;
     }
 
-    fd = socket (AF_INET, SOCK_STREAM, 0);
+    fd = hev_task_io_socket_socket (AF_INET, SOCK_STREAM, 0);
     if (fd == -1) {
         fprintf (stderr, "Create socket failed!\n");
         return -2;
@@ -193,12 +196,6 @@ hev_socks5_tproxy_tcp_init (void)
         fprintf (stderr, "Set reuse address failed!\n");
         close (fd);
         return -3;
-    }
-    ret = ioctl (fd, FIONBIO, (char *)&nonblock);
-    if (ret == -1) {
-        fprintf (stderr, "Set non-blocking failed!\n");
-        close (fd);
-        return -4;
     }
 
     memset (&addr, 0, sizeof (addr));
@@ -209,13 +206,13 @@ hev_socks5_tproxy_tcp_init (void)
     if (ret == -1) {
         fprintf (stderr, "Bind address failed!\n");
         close (fd);
-        return -5;
+        return -4;
     }
     ret = listen (fd, 100);
     if (ret == -1) {
         fprintf (stderr, "Listen failed!\n");
         close (fd);
-        return -6;
+        return -5;
     }
 
     return fd;
@@ -224,7 +221,7 @@ hev_socks5_tproxy_tcp_init (void)
 static int
 hev_socks5_tproxy_dns_init (void)
 {
-    int ret, fd, nonblock = 1, reuseaddr = 1;
+    int ret, fd, reuseaddr = 1;
     struct sockaddr_in addr;
     const char *address;
 
@@ -233,7 +230,7 @@ hev_socks5_tproxy_dns_init (void)
         return -1;
     }
 
-    fd = socket (AF_INET, SOCK_DGRAM, 0);
+    fd = hev_task_io_socket_socket (AF_INET, SOCK_DGRAM, 0);
     if (fd == -1) {
         fprintf (stderr, "Create socket failed!\n");
         return -2;
@@ -246,12 +243,6 @@ hev_socks5_tproxy_dns_init (void)
         close (fd);
         return -3;
     }
-    ret = ioctl (fd, FIONBIO, (char *)&nonblock);
-    if (ret == -1) {
-        fprintf (stderr, "Set non-blocking failed!\n");
-        close (fd);
-        return -4;
-    }
 
     memset (&addr, 0, sizeof (addr));
     addr.sin_family = AF_INET;
@@ -261,7 +252,7 @@ hev_socks5_tproxy_dns_init (void)
     if (ret == -1) {
         fprintf (stderr, "Bind address failed!\n");
         close (fd);
-        return -5;
+        return -4;
     }
 
     return fd;
