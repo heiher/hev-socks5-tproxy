@@ -159,7 +159,7 @@ hev_socks5_worker_tcp_task_entry (void *data)
     HevSocks5Worker *self = data;
     HevTask *task = hev_task_self ();
 
-    hev_task_add_fd (task, self->fd_tcp, EPOLLIN);
+    hev_task_add_fd (task, self->fd_tcp, POLLIN);
 
     for (;;) {
         int client_fd;
@@ -200,7 +200,7 @@ hev_socks5_worker_dns_task_entry (void *data)
     HevSocks5Worker *self = data;
     HevTask *task = hev_task_self ();
 
-    hev_task_add_fd (task, self->fd_dns, EPOLLIN);
+    hev_task_add_fd (task, self->fd_dns, POLLIN);
 
     for (;;) {
         unsigned char buf[2048];
@@ -252,7 +252,7 @@ hev_socks5_event_task_entry (void *data)
         return;
     }
 
-    hev_task_add_fd (task, self->event_fd, EPOLLIN);
+    hev_task_add_fd (task, self->event_fd, POLLIN);
 
     for (;;) {
         eventfd_t val;
