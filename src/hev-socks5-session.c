@@ -260,7 +260,7 @@ socks5_do_connect (HevSocks5Session *self)
         return STEP_CLOSE_SESSION;
 
     task = hev_task_self ();
-    hev_task_add_fd (task, self->remote_fd, EPOLLIN | EPOLLOUT);
+    hev_task_add_fd (task, self->remote_fd, POLLIN | POLLOUT);
 
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = inet_addr (hev_config_get_socks5_address ());
@@ -431,7 +431,7 @@ hev_socks5_session_task_entry (void *data)
     HevSocks5Session *self = data;
     int step = STEP_DO_CONNECT;
 
-    hev_task_add_fd (task, self->client_fd, EPOLLIN | EPOLLOUT);
+    hev_task_add_fd (task, self->client_fd, POLLIN | POLLOUT);
 
     while (step) {
         switch (step) {
