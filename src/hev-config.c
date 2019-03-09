@@ -2,7 +2,7 @@
  ============================================================================
  Name        : hev-config.c
  Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2017 Heiher.
+ Copyright   : Copyright (c) 2017 - 2019 Heiher.
  Description : Config
  ============================================================================
  */
@@ -23,6 +23,8 @@ static unsigned short tcp_port;
 
 static char dns_listen_address[16];
 static unsigned short dns_port;
+
+static char pid_file[1024];
 
 int
 hev_config_init (const char *config_path)
@@ -80,6 +82,11 @@ hev_config_init (const char *config_path)
     if (workers <= 0)
         workers = 1;
 
+    /* Misc:PidFile */
+    char *path = iniparser_getstring (ini_dict, "Misc:PidFile", NULL);
+    if (path)
+        strncpy (pid_file, path, 1023);
+
     iniparser_freedict (ini_dict);
 
     return 0;
@@ -130,4 +137,13 @@ unsigned short
 hev_config_get_dns_port (void)
 {
     return dns_port;
+}
+
+const char *
+hev_config_get_misc_pid_file (void)
+{
+    if ('\0' == pid_file[0])
+        return NULL;
+
+    return pid_file;
 }

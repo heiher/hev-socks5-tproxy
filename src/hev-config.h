@@ -2,7 +2,7 @@
  ============================================================================
  Name        : hev-config.h
  Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2017 Heiher.
+ Copyright   : Copyright (c) 2017 - 2019 Heiher.
  Description : Config
  ============================================================================
  */
@@ -23,5 +23,7 @@ unsigned short hev_config_get_tcp_port (void);
 
 const char *hev_config_get_dns_listen_address (void);
 unsigned short hev_config_get_dns_port (void);
+
+const char *hev_config_get_misc_pid_file (void);
 
 #endif /* __HEV_CONFIG_H__ */
