@@ -26,4 +26,6 @@ unsigned short hev_config_get_dns_port (void);
 
 const char *hev_config_get_misc_pid_file (void);
 
+int hev_config_get_misc_limit_nofile (void);
+
 #endif /* __HEV_CONFIG_H__ */

@@ -25,6 +25,7 @@ static char dns_listen_address[16];
 static unsigned short dns_port;
 
 static char pid_file[1024];
+static int limit_nofile;
 
 int
 hev_config_init (const char *config_path)
@@ -87,6 +88,9 @@ hev_config_init (const char *config_path)
     if (path)
         strncpy (pid_file, path, 1023);
 
+    /* Misc:LimitNOFile */
+    limit_nofile = iniparser_getint (ini_dict, "Misc:LimitNOFile", -2);
+
     iniparser_freedict (ini_dict);
 
     return 0;
@@ -146,4 +150,10 @@ hev_config_get_misc_pid_file (void)
         return NULL;
 
     return pid_file;
+}
+
+int
+hev_config_get_misc_limit_nofile (void)
+{
+    return limit_nofile;
 }
