@@ -15,13 +15,13 @@
 
 static unsigned int workers;
 
-static char socks5_address[16];
+static char socks5_address[64];
 static unsigned short socks5_port;
 
-static char tcp_listen_address[16];
+static char tcp_listen_address[64];
 static unsigned short tcp_port;
 
-static char dns_listen_address[16];
+static char dns_listen_address[64];
 static unsigned short dns_port;
 
 static char pid_file[1024];
@@ -46,7 +46,7 @@ hev_config_init (const char *config_path)
         iniparser_freedict (ini_dict);
         return -2;
     }
-    strncpy (socks5_address, address, 15);
+    strncpy (socks5_address, address, 63);
 
     /* Socks5:Port */
     socks5_port = iniparser_getint (ini_dict, "Socks5:Port", -1);
@@ -59,7 +59,7 @@ hev_config_init (const char *config_path)
     /* TCP:ListenAddress */
     address = iniparser_getstring (ini_dict, "TCP:ListenAddress", NULL);
     if (address)
-        strncpy (tcp_listen_address, address, 15);
+        strncpy (tcp_listen_address, address, 63);
 
     /* TCP:Port */
     tcp_port = iniparser_getint (ini_dict, "TCP:Port", -1);
@@ -67,7 +67,7 @@ hev_config_init (const char *config_path)
     /* DNS:ListenAddress */
     address = iniparser_getstring (ini_dict, "DNS:ListenAddress", NULL);
     if (address)
-        strncpy (dns_listen_address, address, 15);
+        strncpy (dns_listen_address, address, 63);
 
     /* DNS:Port */
     dns_port = iniparser_getint (ini_dict, "DNS:Port", -1);
