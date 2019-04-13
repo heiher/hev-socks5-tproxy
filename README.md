@@ -6,7 +6,8 @@ HevSocks5Tproxy is a simple, lightweight transparent proxy for Linux.
 
 **Features**
 * Redirect TCP connections.
-* Redirect DNS queries.
+* Redirect DNS queries. (see [server](https://gitlab.com/hev/hev-socks5-server))
+* IPv4/IPv6. (dual stack)
 
 ## How to Build
 
