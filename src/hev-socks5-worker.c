@@ -2,7 +2,7 @@
  ============================================================================
  Name        : hev-socks5-worker.c
  Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2017 everyone.
+ Copyright   : Copyright (c) 2017 - 2019 everyone.
  Description : Socks5 worker
  ============================================================================
  */
@@ -12,7 +12,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
-#include <sys/socket.h>
 #include <sys/eventfd.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -163,12 +162,12 @@ hev_socks5_worker_tcp_task_entry (void *data)
 
     for (;;) {
         int client_fd;
-        struct sockaddr_in addr;
-        struct sockaddr *in_addr = (struct sockaddr *)&addr;
-        socklen_t addr_len = sizeof (addr);
+        struct sockaddr_in6 addr6;
+        struct sockaddr *addr = (struct sockaddr *)&addr6;
+        socklen_t addr_len = sizeof (addr6);
         HevSocks5Session *session;
 
-        client_fd = hev_task_io_socket_accept (self->fd_tcp, in_addr, &addr_len,
+        client_fd = hev_task_io_socket_accept (self->fd_tcp, addr, &addr_len,
                                                worker_task_io_yielder, self);
         if (-1 == client_fd) {
             fprintf (stderr, "Accept failed!\n");
@@ -178,8 +177,16 @@ hev_socks5_worker_tcp_task_entry (void *data)
         }
 
 #ifdef _DEBUG
-        printf ("Worker %p: New client %d enter from %s:%u\n", self, client_fd,
-                inet_ntoa (addr.sin_addr), ntohs (addr.sin_port));
+        {
+            char buf[64], *sa = NULL;
+            uint16_t port = 0;
+            if (sizeof (addr6) == addr_len) {
+                sa = inet_ntop (AF_INET6, &addr6.sin6_addr, buf, sizeof (buf));
+                port = ntohs (addr6.sin6_port);
+            }
+            printf ("Worker %p: New client %d enter from [%s]:%u\n", self,
+                    client_fd, sa, port);
+        }
 #endif
 
         session =
@@ -205,12 +212,12 @@ hev_socks5_worker_dns_task_entry (void *data)
     for (;;) {
         unsigned char buf[2048];
         ssize_t len;
-        struct sockaddr_in addr;
-        struct sockaddr *in_addr = (struct sockaddr *)&addr;
-        socklen_t addr_len = sizeof (addr);
+        struct sockaddr_in6 addr6;
+        struct sockaddr *addr = (struct sockaddr *)&addr6;
+        socklen_t addr_len = sizeof (addr6);
         HevSocks5Session *session;
 
-        len = recvfrom (self->fd_dns, buf, 2048, MSG_PEEK, in_addr, &addr_len);
+        len = recvfrom (self->fd_dns, buf, 2048, MSG_PEEK, addr, &addr_len);
         if (len == -1) {
             if (errno == EAGAIN) {
                 hev_task_yield (HEV_TASK_WAITIO);
@@ -226,6 +233,16 @@ hev_socks5_worker_dns_task_entry (void *data)
 #ifdef _DEBUG
         printf ("Worker %p: New DNS request from %s:%u\n", self,
                 inet_ntoa (addr.sin_addr), ntohs (addr.sin_port));
+        {
+            char buf[64], *sa = NULL;
+            uint16_t port = 0;
+            if (sizeof (addr6) == addr_len) {
+                sa = inet_ntop (AF_INET6, &addr6.sin6_addr, buf, sizeof (buf));
+                port = ntohs (addr6.sin6_port);
+            }
+            printf ("Worker %p: New DNS request from [%s]:%u\n", self, sa,
+                    port);
+        }
 #endif
 
         session = hev_socks5_session_new_dns (self->fd_dns,
