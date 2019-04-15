@@ -10,19 +10,16 @@
 #ifndef __HEV_CONFIG_H__
 #define __HEV_CONFIG_H__
 
+#include <netinet/in.h>
+
 int hev_config_init (const char *config_path);
 void hev_config_fini (void);
 
 unsigned int hev_config_get_workers (void);
 
-const char *hev_config_get_socks5_address (void);
-unsigned short hev_config_get_socks5_port (void);
-
-const char *hev_config_get_tcp_listen_address (void);
-unsigned short hev_config_get_tcp_port (void);
-
-const char *hev_config_get_dns_listen_address (void);
-unsigned short hev_config_get_dns_port (void);
+struct sockaddr *hev_config_get_socks5_address (socklen_t *addr_len);
+struct sockaddr *hev_config_get_tcp_listen_address (socklen_t *addr_len);
+struct sockaddr *hev_config_get_dns_listen_address (socklen_t *addr_len);
 
 const char *hev_config_get_misc_pid_file (void);
 

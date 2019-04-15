@@ -8,6 +8,7 @@
  */
 
 #include <stdio.h>
+#include <arpa/inet.h>
 #include <iniparser.h>
 
 #include "hev-config.h"
@@ -15,17 +16,31 @@
 
 static unsigned int workers;
 
-static char socks5_address[64];
-static unsigned short socks5_port;
-
-static char tcp_listen_address[64];
-static unsigned short tcp_port;
-
-static char dns_listen_address[64];
-static unsigned short dns_port;
+static struct sockaddr_in6 socks5_address;
+static struct sockaddr_in6 tcp_listen_address;
+static struct sockaddr_in6 dns_listen_address;
 
 static char pid_file[1024];
 static int limit_nofile;
+
+static int
+address_to_sockaddr (const char *address, unsigned short port,
+                     struct sockaddr_in6 *addr)
+{
+    __builtin_bzero (addr, sizeof (*addr));
+
+    addr->sin6_family = AF_INET6;
+    addr->sin6_port = htons (port);
+    if (inet_pton (AF_INET, address, &addr->sin6_addr.s6_addr[12]) == 1) {
+        ((uint16_t *)&addr->sin6_addr)[5] = 0xffff;
+    } else {
+        if (inet_pton (AF_INET6, address, &addr->sin6_addr) != 1) {
+            return -1;
+        }
+    }
+
+    return 0;
+}
 
 int
 hev_config_init (const char *config_path)
@@ -46,36 +61,41 @@ hev_config_init (const char *config_path)
         iniparser_freedict (ini_dict);
         return -2;
     }
-    strncpy (socks5_address, address, 63);
 
     /* Socks5:Port */
-    socks5_port = iniparser_getint (ini_dict, "Socks5:Port", -1);
-    if (-1 == (short)socks5_port) {
+    int port = iniparser_getint (ini_dict, "Socks5:Port", -1);
+    if (-1 == port) {
         fprintf (stderr, "Get Socks5:Port from file %s failed!\n", config_path);
         iniparser_freedict (ini_dict);
         return -3;
     }
 
+    if (address_to_sockaddr (address, port, &socks5_address) < 0) {
+        fprintf (stderr, "Parse socks5 address failed!\n");
+        iniparser_freedict (ini_dict);
+        return -4;
+    }
+
     /* TCP:ListenAddress */
     address = iniparser_getstring (ini_dict, "TCP:ListenAddress", NULL);
-    if (address)
-        strncpy (tcp_listen_address, address, 63);
 
     /* TCP:Port */
-    tcp_port = iniparser_getint (ini_dict, "TCP:Port", -1);
+    port = iniparser_getint (ini_dict, "TCP:Port", -1);
+
+    address_to_sockaddr (address, port, &tcp_listen_address);
 
     /* DNS:ListenAddress */
     address = iniparser_getstring (ini_dict, "DNS:ListenAddress", NULL);
-    if (address)
-        strncpy (dns_listen_address, address, 63);
 
     /* DNS:Port */
-    dns_port = iniparser_getint (ini_dict, "DNS:Port", -1);
+    port = iniparser_getint (ini_dict, "DNS:Port", -1);
 
-    if (!tcp_listen_address[0] && !dns_listen_address[0]) {
+    address_to_sockaddr (address, port, &dns_listen_address);
+
+    if (!tcp_listen_address.sin6_port && !dns_listen_address.sin6_port) {
         fprintf (stderr, "Cannot found TCP or DNS in file %s!\n", config_path);
         iniparser_freedict (ini_dict);
-        return -4;
+        return -5;
     }
 
     /* Main:Workers */
@@ -107,40 +127,31 @@ hev_config_get_workers (void)
     return workers;
 }
 
-const char *
-hev_config_get_socks5_address (void)
+struct sockaddr *
+hev_config_get_socks5_address (socklen_t *addr_len)
 {
-    return socks5_address;
+    *addr_len = sizeof (socks5_address);
+    return (struct sockaddr *)&socks5_address;
 }
 
-unsigned short
-hev_config_get_socks5_port (void)
+struct sockaddr *
+hev_config_get_tcp_listen_address (socklen_t *addr_len)
 {
-    return socks5_port;
+    if (!tcp_listen_address.sin6_port)
+        return NULL;
+
+    *addr_len = sizeof (tcp_listen_address);
+    return (struct sockaddr *)&tcp_listen_address;
 }
 
-const char *
-hev_config_get_tcp_listen_address (void)
+struct sockaddr *
+hev_config_get_dns_listen_address (socklen_t *addr_len)
 {
-    return tcp_listen_address;
-}
+    if (!dns_listen_address.sin6_port)
+        return NULL;
 
-unsigned short
-hev_config_get_tcp_port (void)
-{
-    return tcp_port;
-}
-
-const char *
-hev_config_get_dns_listen_address (void)
-{
-    return dns_listen_address;
-}
-
-unsigned short
-hev_config_get_dns_port (void)
-{
-    return dns_port;
+    *addr_len = sizeof (dns_listen_address);
+    return (struct sockaddr *)&dns_listen_address;
 }
 
 const char *
