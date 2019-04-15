@@ -271,10 +271,8 @@ static int
 socks5_do_connect (HevSocks5Session *self)
 {
     HevTask *task;
-    struct sockaddr_in6 addr6 = { 0 };
-    struct sockaddr *addr = (struct sockaddr *)&addr6;
-    const socklen_t addr_len = sizeof (addr6);
-    const char *address = hev_config_get_socks5_address ();
+    struct sockaddr *addr;
+    socklen_t addr_len;
 
     self->remote_fd = hev_task_io_socket_socket (AF_INET6, SOCK_STREAM, 0);
     if (self->remote_fd == -1)
@@ -282,15 +280,7 @@ socks5_do_connect (HevSocks5Session *self)
 
     task = hev_task_self ();
     hev_task_add_fd (task, self->remote_fd, POLLIN | POLLOUT);
-
-    addr6.sin6_family = AF_INET6;
-    addr6.sin6_port = htons (hev_config_get_socks5_port ());
-    if (inet_pton (AF_INET, address, &addr6.sin6_addr.s6_addr[12]) == 1) {
-        ((uint16_t *)&addr6.sin6_addr)[5] = 0xffff;
-    } else {
-        if (inet_pton (AF_INET6, address, &addr6.sin6_addr) != 1)
-            return STEP_CLOSE_SESSION;
-    }
+    addr = hev_config_get_socks5_address (&addr_len);
 
     /* connect */
     if (hev_task_io_socket_connect (self->remote_fd, addr, addr_len,
