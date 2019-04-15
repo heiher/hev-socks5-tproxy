@@ -14,8 +14,6 @@
 #include <signal.h>
 #include <pthread.h>
 #include <sys/ioctl.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 
 #include "hev-socks5-tproxy.h"
 #include "hev-socks5-worker.h"
@@ -187,15 +185,12 @@ static int
 hev_socks5_tproxy_tcp_socket (int reuseport)
 {
     int ret, fd, reuse = 1;
-    struct sockaddr_in6 addr6 = { 0 };
-    struct sockaddr *addr = (struct sockaddr *)&addr6;
-    const socklen_t addr_len = sizeof (addr6);
-    const char *address;
+    struct sockaddr *addr;
+    socklen_t addr_len;
 
-    address = hev_config_get_tcp_listen_address ();
-    if (!address[0]) {
+    addr = hev_config_get_tcp_listen_address (&addr_len);
+    if (!addr)
         return -1;
-    }
 
     fd = hev_task_io_socket_socket (AF_INET6, SOCK_STREAM, 0);
     if (fd == -1) {
@@ -219,29 +214,17 @@ hev_socks5_tproxy_tcp_socket (int reuseport)
         }
     }
 
-    addr6.sin6_family = AF_INET6;
-    addr6.sin6_port = htons (hev_config_get_tcp_port ());
-    if (inet_pton (AF_INET, address, &addr6.sin6_addr.s6_addr[12]) == 1) {
-        ((uint16_t *)&addr6.sin6_addr)[5] = 0xffff;
-    } else {
-        if (inet_pton (AF_INET6, address, &addr6.sin6_addr) != 1) {
-            fprintf (stderr, "Parse address failed!\n");
-            close (fd);
-            return -5;
-        }
-    }
-
     ret = bind (fd, addr, addr_len);
     if (ret == -1) {
         fprintf (stderr, "Bind address failed!\n");
         close (fd);
-        return -6;
+        return -5;
     }
     ret = listen (fd, 100);
     if (ret == -1) {
         fprintf (stderr, "Listen failed!\n");
         close (fd);
-        return -7;
+        return -6;
     }
 
     return fd;
@@ -251,15 +234,12 @@ static int
 hev_socks5_tproxy_dns_socket (int reuseport)
 {
     int ret, fd, reuse = 1;
-    struct sockaddr_in6 addr6 = { 0 };
-    struct sockaddr *addr = (struct sockaddr *)&addr6;
-    const socklen_t addr_len = sizeof (addr6);
-    const char *address;
+    struct sockaddr *addr;
+    socklen_t addr_len;
 
-    address = hev_config_get_dns_listen_address ();
-    if (!address[0]) {
+    addr = hev_config_get_dns_listen_address (&addr_len);
+    if (!addr)
         return -1;
-    }
 
     fd = hev_task_io_socket_socket (AF_INET6, SOCK_DGRAM, 0);
     if (fd == -1) {
@@ -283,23 +263,11 @@ hev_socks5_tproxy_dns_socket (int reuseport)
         }
     }
 
-    addr6.sin6_family = AF_INET6;
-    addr6.sin6_port = htons (hev_config_get_dns_port ());
-    if (inet_pton (AF_INET, address, &addr6.sin6_addr.s6_addr[12]) == 1) {
-        ((uint16_t *)&addr6.sin6_addr)[5] = 0xffff;
-    } else {
-        if (inet_pton (AF_INET6, address, &addr6.sin6_addr) != 1) {
-            fprintf (stderr, "Parse address failed!\n");
-            close (fd);
-            return -5;
-        }
-    }
-
     ret = bind (fd, addr, addr_len);
     if (ret == -1) {
         fprintf (stderr, "Bind address failed!\n");
         close (fd);
-        return -6;
+        return -5;
     }
 
     return fd;
