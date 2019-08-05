@@ -326,7 +326,7 @@ socks5_write_request (HevSocks5Session *self)
         len = 22;
         socks5_r.atype = 0x04;
         socks5_r.ipv6.port = self->addr.sin6_port;
-        __builtin_memcpy (&socks5_r.ipv6.addr, &self->addr.sin6_addr, 16);
+        __builtin_memcpy (socks5_r.ipv6.addr, &self->addr.sin6_addr, 16);
     }
     iov[1].iov_base = &socks5_r;
     iov[1].iov_len = len;
