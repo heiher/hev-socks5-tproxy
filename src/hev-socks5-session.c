@@ -299,7 +299,7 @@ socks5_write_request (HevSocks5Session *self)
     struct iovec iov[2];
     ssize_t len;
 
-    memset (&mh, 0, sizeof (mh));
+    __builtin_memset (&mh, 0, sizeof (mh));
     mh.msg_iov = iov;
     mh.msg_iovlen = 2;
 
@@ -406,7 +406,7 @@ socks5_do_fwd_dns (HevSocks5Session *self)
     const socklen_t addr_len = sizeof (self->addr);
     uint16_t dns_len;
 
-    memset (&mh, 0, sizeof (mh));
+    __builtin_memset (&mh, 0, sizeof (mh));
     mh.msg_iov = iov;
     mh.msg_iovlen = 2;
 
