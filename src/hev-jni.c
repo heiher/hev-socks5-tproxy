@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <string.h>
 
 #include "hev-jni.h"
 #include "hev-main.h"
@@ -93,8 +94,7 @@ native_start_service (JNIEnv *env, jobject thiz, jstring config_path)
 
     argv = malloc (sizeof (char *) * 2);
 
-    bytes =
-        (const signed char *)(*env)->GetStringUTFChars (env, config_path, NULL);
+    bytes = (const jbyte *)(*env)->GetStringUTFChars (env, config_path, NULL);
     argv[1] = strdup ((const char *)bytes);
     (*env)->ReleaseStringUTFChars (env, config_path, (const char *)bytes);
 
