@@ -59,7 +59,7 @@ hev_socks5_worker_new (int fd_tcp, int fd_dns)
     self = hev_malloc0 (sizeof (HevSocks5Worker));
     if (!self) {
         fprintf (stderr, "Allocate worker failed!\n");
-        return NULL;
+        goto exit;
     }
 
     self->fd_tcp = fd_tcp;
@@ -70,8 +70,7 @@ hev_socks5_worker_new (int fd_tcp, int fd_dns)
         self->task_worker_tcp = hev_task_new (8192);
         if (!self->task_worker_tcp) {
             fprintf (stderr, "Create worker tcp's task failed!\n");
-            hev_free (self);
-            return NULL;
+            goto exit_free;
         }
     }
 
@@ -79,37 +78,34 @@ hev_socks5_worker_new (int fd_tcp, int fd_dns)
         self->task_worker_dns = hev_task_new (8192);
         if (!self->task_worker_dns) {
             fprintf (stderr, "Create worker dns's task failed!\n");
-            if (self->task_worker_tcp)
-                hev_task_unref (self->task_worker_tcp);
-            hev_free (self);
-            return NULL;
+            goto exit_free;
         }
     }
 
     self->task_event = hev_task_new (8192);
     if (!self->task_event) {
         fprintf (stderr, "Create event's task failed!\n");
-        if (self->task_worker_tcp)
-            hev_task_unref (self->task_worker_tcp);
-        if (self->task_worker_dns)
-            hev_task_unref (self->task_worker_dns);
-        hev_free (self);
-        return NULL;
+        goto exit_free;
     }
 
     self->task_session_manager = hev_task_new (8192);
     if (!self->task_session_manager) {
         fprintf (stderr, "Create session manager's task failed!\n");
-        hev_task_unref (self->task_event);
-        if (self->task_worker_tcp)
-            hev_task_unref (self->task_worker_tcp);
-        if (self->task_worker_dns)
-            hev_task_unref (self->task_worker_dns);
-        hev_free (self);
-        return NULL;
+        goto exit_free_task_event;
     }
 
     return self;
+
+exit_free_task_event:
+    hev_task_unref (self->task_event);
+exit_free:
+    if (self->task_worker_tcp)
+        hev_task_unref (self->task_worker_tcp);
+    if (self->task_worker_dns)
+        hev_task_unref (self->task_worker_dns);
+    hev_free (self);
+exit:
+    return NULL;
 }
 
 void
