@@ -215,7 +215,8 @@ hev_socks5_session_new_dns (int client_fd, HevSocks5SessionCloseNotify notify,
 
 #ifdef _DEBUG
     {
-        char buf[64], *sa = NULL;
+        char buf[64];
+        const char *sa = NULL;
         uint16_t port = 0;
         if (sizeof (self->addr) == addr_len) {
             sa = inet_ntop (AF_INET6, &self->addr.sin6_addr, buf, sizeof (buf));
