@@ -50,12 +50,17 @@ struct _HevSocks5Session
     int remote_fd;
     int ref_count;
 
-    int dns_request_len;
-    void *dns_request;
+    uint8_t is_dns;
     struct sockaddr_in6 addr;
 
     HevSocks5SessionCloseNotify notify;
     void *notify_data;
+
+    struct
+    {
+        uint16_t query_len;
+        uint8_t query[1500];
+    } dns[0];
 };
 
 struct _Socks5AuthHeader
@@ -100,13 +105,13 @@ struct _Socks5ReqResHeader
 } __attribute__ ((packed));
 
 static HevSocks5Session *
-hev_socks5_session_new (int client_fd, HevSocks5SessionCloseNotify notify,
-                        void *notify_data)
+hev_socks5_session_new (int client_fd, size_t size,
+                        HevSocks5SessionCloseNotify notify, void *notify_data)
 {
     HevSocks5Session *self;
     HevTask *task;
 
-    self = hev_malloc0 (sizeof (HevSocks5Session));
+    self = hev_malloc0 (sizeof (HevSocks5Session) + size);
     if (!self)
         return NULL;
 
@@ -141,7 +146,7 @@ hev_socks5_session_new_tcp (int client_fd, HevSocks5SessionCloseNotify notify,
     socklen_t addr_len;
     const int sopt = SO_ORIGINAL_DST;
 
-    self = hev_socks5_session_new (client_fd, notify, notify_data);
+    self = hev_socks5_session_new (client_fd, 0, notify, notify_data);
     if (!self)
         return NULL;
 
@@ -191,23 +196,17 @@ hev_socks5_session_new_dns (int client_fd, HevSocks5SessionCloseNotify notify,
     socklen_t addr_len;
     ssize_t s;
 
-    self = hev_socks5_session_new (client_fd, notify, notify_data);
+    self = hev_socks5_session_new (client_fd, sizeof (*self->dns), notify,
+                                   notify_data);
     if (!self)
         return NULL;
 
-    self->dns_request = hev_malloc (2048);
-    if (!self->dns_request) {
-        hev_task_unref (self->base.task);
-        hev_free (self);
-        return NULL;
-    }
-
-    /* recv dns request */
+    /* recv dns query */
     addr = (struct sockaddr *)&self->addr;
     addr_len = sizeof (self->addr);
-    s = recvfrom (client_fd, self->dns_request, 2048, 0, addr, &addr_len);
+    s = recvfrom (client_fd, self->dns->query, sizeof (self->dns->query), 0,
+                  addr, &addr_len);
     if (s == -1) {
-        hev_free (self->dns_request);
         hev_task_unref (self->base.task);
         hev_free (self);
         return NULL;
@@ -225,7 +224,9 @@ hev_socks5_session_new_dns (int client_fd, HevSocks5SessionCloseNotify notify,
         printf ("Receive a DNS message from [%s]:%u\n", sa, port);
     }
 #endif
-    self->dns_request_len = s;
+
+    self->is_dns = 1;
+    self->dns->query_len = s;
 
     return self;
 }
@@ -245,8 +246,6 @@ hev_socks5_session_unref (HevSocks5Session *self)
     if (self->ref_count)
         return;
 
-    if (self->dns_request)
-        hev_free (self->dns_request);
     hev_free (self);
 }
 
@@ -313,7 +312,7 @@ socks5_write_request (HevSocks5Session *self)
 
     /* write socks5 request */
     socks5_r.ver = 0x05;
-    if (self->dns_request_len)
+    if (self->is_dns)
         socks5_r.cmd = 0x04;
     else
         socks5_r.cmd = 0x01;
@@ -383,7 +382,7 @@ socks5_read_response (HevSocks5Session *self)
     if (len <= 0)
         return STEP_CLOSE_SESSION;
 
-    return (self->dns_request_len) ? STEP_DO_FWD_DNS : STEP_DO_SPLICE;
+    return self->is_dns ? STEP_DO_FWD_DNS : STEP_DO_SPLICE;
 }
 
 static int
@@ -412,13 +411,13 @@ socks5_do_fwd_dns (HevSocks5Session *self)
     mh.msg_iovlen = 2;
 
     /* write dns request length */
-    dns_len = htons (self->dns_request_len);
+    dns_len = htons (self->dns->query_len);
     iov[0].iov_base = &dns_len;
     iov[0].iov_len = 2;
 
     /* write dns request */
-    iov[1].iov_base = self->dns_request;
-    iov[1].iov_len = self->dns_request_len;
+    iov[1].iov_base = self->dns->query;
+    iov[1].iov_len = self->dns->query_len;
 
     /* send dns request */
     len = hev_task_io_socket_sendmsg (self->remote_fd, &mh, MSG_WAITALL,
@@ -455,7 +454,7 @@ socks5_close_session (HevSocks5Session *self)
 {
     if (self->remote_fd >= 0)
         close (self->remote_fd);
-    if (self->dns_request_len == 0)
+    if (!self->is_dns)
         close (self->client_fd);
 
     self->notify (self, self->notify_data);
