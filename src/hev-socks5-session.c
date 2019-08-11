@@ -111,10 +111,11 @@ hev_socks5_session_new (int client_fd, size_t size,
     HevSocks5Session *self;
     HevTask *task;
 
-    self = hev_malloc0 (sizeof (HevSocks5Session) + size);
+    self = hev_malloc (sizeof (HevSocks5Session) + size);
     if (!self)
         return NULL;
 
+    __builtin_bzero (self, sizeof (HevSocks5Session));
     self->base.hp = SESSION_HP;
 
     self->ref_count = 1;
