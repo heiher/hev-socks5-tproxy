@@ -119,5 +119,7 @@ hev_logger_log (HevLoggerLevel level, const char *fmt, ...)
     iov[3].iov_base = "\n";
     iov[3].iov_len = 1;
 
-    writev (fd, iov, 4);
+    if (writev (fd, iov, 4)) {
+        /* ignore return value */
+    }
 }
