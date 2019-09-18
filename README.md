@@ -35,47 +35,33 @@ ndk-build
 
 ### Config
 
-```ini
-[Main]
-; Worker threads
-Workers=4
+```yaml
+main:
+  workers: 4
 
-[Socks5]
-; Socks5 server port
-Port=1080
-; Socks5 server address
-;  ipv4
-;  ipv6
-Address=127.0.0.1
+socks5:
+  port: 1080
+  address: 127.0.0.1
 
-[TCP]
-; Listen port
-Port=1088
-; Listen address
-;  ipv4
-;  ipv6
-Listenddress=0.0.0.0
+tcp:
+  port: 1088
+  listen-address: 0.0.0.0
 
-[DNS]
-; Listen port
-Port=5300
-; Listen address
-;  ipv4
-;  ipv6
-Listenddress=0.0.0.0
+dns:
+  port: 5300
+  listen-address: 0.0.0.0
 
-;[Misc]
-; If present, run as a daemon with this pid file
-;PidFile=/run/hev-socks5-tproxy.pid
-; If present, set rlimit nofile; else use default value of environment
-; -1: unlimit
-;LimitNOFile=-1
+#misc:
+#  log-file: null # stdout, stderr or file-path
+#  log-level: warn # debug, info or error
+#  pid-file: /run/hev-socks5-tproxy.pid
+#  limit-nofile: -1
 ```
 
 ### Run
 
 ```bash
-bin/hev-socks5-tproxy conf/main.ini
+bin/hev-socks5-tproxy conf/main.yml
 ```
 
 ### Redirect rules
