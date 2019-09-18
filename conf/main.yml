@@ -1,0 +1,20 @@
+# Main configuration for hev-socks5-tproxy
+
+main:
+  workers: 4
+
+socks5:
+  port: 1080
+  address: 127.0.0.1
+
+tcp:
+  port: 1088
+  listen-address: 0.0.0.0
+
+dns:
+  port: 5300
+  listen-address: 0.0.0.0
+
+#misc:
+#  pid-file: /run/hev-socks5-tproxy.pid
+#  limit-nofile: -1
