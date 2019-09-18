@@ -20,6 +20,7 @@
 #include "hev-socks5-session.h"
 #include "hev-memory-allocator.h"
 #include "hev-config.h"
+#include "hev-logger.h"
 #include "hev-task.h"
 #include "hev-task-io.h"
 #include "hev-task-io-socket.h"
@@ -58,7 +59,7 @@ hev_socks5_worker_new (int fd_tcp, int fd_dns)
 
     self = hev_malloc0 (sizeof (HevSocks5Worker));
     if (!self) {
-        fprintf (stderr, "Allocate worker failed!\n");
+        LOG_E ("Allocate worker failed!");
         goto exit;
     }
 
@@ -69,7 +70,7 @@ hev_socks5_worker_new (int fd_tcp, int fd_dns)
     if (fd_tcp >= 0) {
         self->task_worker_tcp = hev_task_new (8192);
         if (!self->task_worker_tcp) {
-            fprintf (stderr, "Create worker tcp's task failed!\n");
+            LOG_E ("Create worker tcp's task failed!");
             goto exit_free;
         }
     }
@@ -77,20 +78,20 @@ hev_socks5_worker_new (int fd_tcp, int fd_dns)
     if (fd_dns >= 0) {
         self->task_worker_dns = hev_task_new (8192);
         if (!self->task_worker_dns) {
-            fprintf (stderr, "Create worker dns's task failed!\n");
+            LOG_E ("Create worker dns's task failed!");
             goto exit_free;
         }
     }
 
     self->task_event = hev_task_new (8192);
     if (!self->task_event) {
-        fprintf (stderr, "Create event's task failed!\n");
+        LOG_E ("Create event's task failed!");
         goto exit_free;
     }
 
     self->task_session_manager = hev_task_new (8192);
     if (!self->task_session_manager) {
-        fprintf (stderr, "Create session manager's task failed!\n");
+        LOG_E ("Create session manager's task failed!");
         goto exit_free_task_event;
     }
 
@@ -135,7 +136,7 @@ hev_socks5_worker_stop (HevSocks5Worker *self)
         return;
 
     if (eventfd_write (self->event_fd, 1) == -1)
-        fprintf (stderr, "Write stop event failed!\n");
+        LOG_E ("Write stop event failed!");
 }
 
 static int
@@ -166,25 +167,11 @@ hev_socks5_worker_tcp_task_entry (void *data)
         client_fd = hev_task_io_socket_accept (self->fd_tcp, addr, &addr_len,
                                                worker_task_io_yielder, self);
         if (-1 == client_fd) {
-            fprintf (stderr, "Accept failed!\n");
+            LOG_E ("Accept failed!");
             continue;
         } else if (-2 == client_fd) {
             break;
         }
-
-#ifdef _DEBUG
-        {
-            char buf[64];
-            const char *sa = NULL;
-            uint16_t port = 0;
-            if (sizeof (addr6) == addr_len) {
-                sa = inet_ntop (AF_INET6, &addr6.sin6_addr, buf, sizeof (buf));
-                port = ntohs (addr6.sin6_port);
-            }
-            printf ("Worker %p: New client %d enter from [%s]:%u\n", self,
-                    client_fd, sa, port);
-        }
-#endif
 
         session =
             hev_socks5_session_new_tcp (client_fd, session_close_handler, self);
@@ -223,23 +210,9 @@ hev_socks5_worker_dns_task_entry (void *data)
                 continue;
             }
 
-            fprintf (stderr, "Receive failed!\n");
+            LOG_E ("Receive failed!");
             break;
         }
-
-#ifdef _DEBUG
-        {
-            char buf[64];
-            const char *sa = NULL;
-            uint16_t port = 0;
-            if (sizeof (addr6) == addr_len) {
-                sa = inet_ntop (AF_INET6, &addr6.sin6_addr, buf, sizeof (buf));
-                port = ntohs (addr6.sin6_port);
-            }
-            printf ("Worker %p: New DNS request from [%s]:%u\n", self, sa,
-                    port);
-        }
-#endif
 
         session = hev_socks5_session_new_dns (self->fd_dns,
                                               session_close_handler, self);
@@ -261,7 +234,7 @@ hev_socks5_event_task_entry (void *data)
 
     self->event_fd = eventfd (0, EFD_NONBLOCK);
     if (-1 == self->event_fd) {
-        fprintf (stderr, "Create eventfd failed!\n");
+        LOG_E ("Create eventfd failed!");
         return;
     }
 
@@ -289,21 +262,11 @@ hev_socks5_event_task_entry (void *data)
     hev_task_wakeup (self->task_session_manager);
 
     /* wakeup sessions's task */
-#ifdef _DEBUG
-    printf ("Worker %p: Enumerating session list ...\n", self);
-#endif
     for (session = self->session_list; session; session = session->next) {
-#ifdef _DEBUG
-        printf ("Worker %p: Set session %p's hp = 0\n", self, session);
-#endif
         session->hp = 0;
 
         /* wakeup session's task to do destroy */
         hev_task_wakeup (session->task);
-#ifdef _DEBUG
-        printf ("Worker %p: Wakeup session %p's task %p\n", self, session,
-                session->task);
-#endif
     }
 
     close (self->event_fd);
@@ -321,24 +284,13 @@ hev_socks5_session_manager_task_entry (void *data)
         if (self->quit)
             break;
 
-#ifdef _DEBUG
-        printf ("Worker %p: Enumerating session list ...\n", self);
-#endif
         for (session = self->session_list; session; session = session->next) {
-#ifdef _DEBUG
-            printf ("Worker %p: Session %p's hp %d\n", self, session,
-                    session->hp);
-#endif
             session->hp--;
             if (session->hp > 0)
                 continue;
 
             /* wakeup session's task to do destroy */
             hev_task_wakeup (session->task);
-#ifdef _DEBUG
-            printf ("Worker %p: Wakeup session %p's task %p\n", self, session,
-                    session->task);
-#endif
         }
     }
 }
@@ -349,9 +301,6 @@ session_manager_insert_session (HevSocks5Worker *self,
 {
     HevSocks5SessionBase *session_base = (HevSocks5SessionBase *)session;
 
-#ifdef _DEBUG
-    printf ("Worker %p: Insert session: %p\n", self, session);
-#endif
     /* insert session to session_list */
     session_base->prev = NULL;
     session_base->next = self->session_list;
@@ -366,9 +315,6 @@ session_manager_remove_session (HevSocks5Worker *self,
 {
     HevSocks5SessionBase *session_base = (HevSocks5SessionBase *)session;
 
-#ifdef _DEBUG
-    printf ("Worker %p: Remove session: %p\n", self, session);
-#endif
     /* remove session from session_list */
     if (session_base->prev) {
         session_base->prev->next = session_base->next;
