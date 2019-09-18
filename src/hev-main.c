@@ -17,6 +17,7 @@
 #include "hev-task-system.h"
 #include "hev-config.h"
 #include "hev-config-const.h"
+#include "hev-logger.h"
 #include "hev-socks5-tproxy.h"
 
 static void
@@ -33,7 +34,7 @@ run_as_daemon (const char *pid_file)
 
     fp = fopen (pid_file, "w+");
     if (!fp) {
-        fprintf (stderr, "Open pid file %s failed!\n", pid_file);
+        LOG_E ("Open pid file %s failed!", pid_file);
         return;
     }
 
@@ -81,13 +82,16 @@ main (int argc, char *argv[])
     if (0 > hev_config_init (argv[1]))
         return -2;
 
-    if (0 > hev_socks5_tproxy_init ())
+    if (0 > hev_logger_init ())
         return -3;
+
+    if (0 > hev_socks5_tproxy_init ())
+        return -4;
 
     limit_nofile = hev_config_get_misc_limit_nofile ();
     if (0 > set_limit_nofile (limit_nofile)) {
-        fprintf (stderr, "Set limit nofile failed!\n");
-        return -4;
+        LOG_E ("Set limit nofile failed!");
+        return -5;
     }
 
     pid_file = hev_config_get_misc_pid_file ();
@@ -97,6 +101,8 @@ main (int argc, char *argv[])
     hev_socks5_tproxy_run ();
 
     hev_socks5_tproxy_fini ();
+
+    hev_logger_fini ();
 
     hev_config_fini ();
 
