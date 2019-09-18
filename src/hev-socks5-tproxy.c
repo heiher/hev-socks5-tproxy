@@ -18,6 +18,7 @@
 #include "hev-socks5-tproxy.h"
 #include "hev-socks5-worker.h"
 #include "hev-config.h"
+#include "hev-logger.h"
 #include "hev-task.h"
 #include "hev-task-io.h"
 #include "hev-task-io-socket.h"
@@ -48,24 +49,24 @@ hev_socks5_tproxy_init (void)
     HevSocks5WorkerData *wl;
 
     if (hev_task_system_init () < 0) {
-        fprintf (stderr, "Init task system failed!\n");
+        LOG_E ("Init task system failed!");
         goto exit;
     }
 
     workers = hev_config_get_workers ();
     wl = hev_malloc0 (sizeof (HevSocks5WorkerData *) * workers);
     if (!wl) {
-        fprintf (stderr, "Allocate worker list failed!\n");
+        LOG_E ("Allocate worker list failed!");
         goto exit_free_sys;
     }
 
     if (signal (SIGPIPE, SIG_IGN) == SIG_ERR) {
-        fprintf (stderr, "Set signal pipe's handler failed!\n");
+        LOG_E ("Set signal pipe's handler failed!");
         goto exit_free_wl;
     }
 
     if (signal (SIGINT, sigint_handler) == SIG_ERR) {
-        fprintf (stderr, "Set signal int's handler failed!\n");
+        LOG_E ("Set signal int's handler failed!");
         goto exit_free_wl;
     }
 
@@ -74,7 +75,7 @@ hev_socks5_tproxy_init (void)
         wl[0].fd_tcp = hev_socks5_tproxy_tcp_socket (&reuseport);
     wl[0].fd_dns = hev_socks5_tproxy_dns_socket (&reuseport);
     if ((wl[0].fd_tcp < 0) && (wl[0].fd_dns < 0)) {
-        fprintf (stderr, "TCP and DNS listen failed!\n");
+        LOG_E ("TCP and DNS listen failed!");
         goto exit_close_fds;
     }
 
@@ -120,7 +121,7 @@ hev_socks5_tproxy_run (void)
 
     w0->worker = hev_socks5_worker_new (w0->fd_tcp, w0->fd_dns);
     if (!w0->worker) {
-        fprintf (stderr, "Create socks5 worker 0 failed!\n");
+        LOG_E ("Create socks5 worker 0 failed!");
         return -1;
     }
 
@@ -174,13 +175,13 @@ work_thread_handler (void *data)
     HevSocks5WorkerData *wi = &worker_list[i];
 
     if (hev_task_system_init () < 0) {
-        fprintf (stderr, "Init task system failed!\n");
+        LOG_E ("Init task system failed!");
         goto exit;
     }
 
     wi->worker = hev_socks5_worker_new (wi->fd_tcp, wi->fd_dns);
     if (!wi->worker) {
-        fprintf (stderr, "Create socks5 worker %d failed!\n", i);
+        LOG_E ("Create socks5 worker %d failed!", i);
         goto exit_free_sys;
     }
 
@@ -213,13 +214,13 @@ hev_socks5_tproxy_tcp_socket (int *reuseport)
 
     fd = hev_task_io_socket_socket (AF_INET6, SOCK_STREAM, 0);
     if (fd == -1) {
-        fprintf (stderr, "Create socket failed!\n");
+        LOG_E ("Create socket failed!");
         goto exit;
     }
 
     ret = setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof (reuse));
     if (ret == -1) {
-        fprintf (stderr, "Set reuse address failed!\n");
+        LOG_E ("Set reuse address failed!");
         goto exit_close;
     }
 
@@ -233,12 +234,12 @@ hev_socks5_tproxy_tcp_socket (int *reuseport)
 
     ret = bind (fd, addr, addr_len);
     if (ret == -1) {
-        fprintf (stderr, "Bind address failed!\n");
+        LOG_E ("Bind address failed!");
         goto exit_close;
     }
     ret = listen (fd, 100);
     if (ret == -1) {
-        fprintf (stderr, "Listen failed!\n");
+        LOG_E ("Listen failed!");
         goto exit_close;
     }
 
@@ -263,13 +264,13 @@ hev_socks5_tproxy_dns_socket (int *reuseport)
 
     fd = hev_task_io_socket_socket (AF_INET6, SOCK_DGRAM, 0);
     if (fd == -1) {
-        fprintf (stderr, "Create socket failed!\n");
+        LOG_E ("Create socket failed!");
         goto exit;
     }
 
     ret = setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof (reuse));
     if (ret == -1) {
-        fprintf (stderr, "Set reuse address failed!\n");
+        LOG_E ("Set reuse address failed!");
         goto exit_close;
     }
 
@@ -283,7 +284,7 @@ hev_socks5_tproxy_dns_socket (int *reuseport)
 
     ret = bind (fd, addr, addr_len);
     if (ret == -1) {
-        fprintf (stderr, "Bind address failed!\n");
+        LOG_E ("Bind address failed!");
         goto exit_close;
     }
 
