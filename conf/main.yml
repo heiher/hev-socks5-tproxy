@@ -16,5 +16,6 @@ dns:
   listen-address: 0.0.0.0
 
 #misc:
+#  log-file: null # stdout, stderr or file-path
 #  pid-file: /run/hev-socks5-tproxy.pid
 #  limit-nofile: -1
