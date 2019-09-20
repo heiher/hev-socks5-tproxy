@@ -12,7 +12,6 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/ioctl.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
 #include <linux/netfilter_ipv4.h>
 
@@ -54,6 +53,7 @@ struct _HevSocks5Session
     uint8_t is_dns;
     struct sockaddr_in6 addr;
 
+    char saddr[64];
     HevSocks5SessionCloseNotify notify;
     void *notify_data;
 
@@ -106,7 +106,7 @@ struct _Socks5ReqResHeader
 } __attribute__ ((packed));
 
 static HevSocks5Session *
-hev_socks5_session_new (int client_fd, size_t size,
+hev_socks5_session_new (int client_fd, size_t size, struct sockaddr_in6 *saddr,
                         HevSocks5SessionCloseNotify notify, void *notify_data)
 {
     HevSocks5Session *self;
@@ -134,11 +134,22 @@ hev_socks5_session_new (int client_fd, size_t size,
     self->base.task = task;
     hev_task_set_priority (task, 9);
 
+    if (LOG_ON ()) {
+        char buf[64];
+        const char *sa;
+        int port;
+
+        sa = inet_ntop (AF_INET6, &saddr->sin6_addr, buf, sizeof (buf));
+        port = ntohs (saddr->sin6_port);
+        snprintf (self->saddr, sizeof (self->saddr), "[%s]:%u", sa, port);
+    }
+
     return self;
 }
 
 HevSocks5Session *
-hev_socks5_session_new_tcp (int client_fd, HevSocks5SessionCloseNotify notify,
+hev_socks5_session_new_tcp (int client_fd, struct sockaddr_in6 *saddr,
+                            HevSocks5SessionCloseNotify notify,
                             void *notify_data)
 {
     HevSocks5Session *self;
@@ -148,7 +159,7 @@ hev_socks5_session_new_tcp (int client_fd, HevSocks5SessionCloseNotify notify,
     socklen_t addr_len;
     const int sopt = SO_ORIGINAL_DST;
 
-    self = hev_socks5_session_new (client_fd, 0, notify, notify_data);
+    self = hev_socks5_session_new (client_fd, 0, saddr, notify, notify_data);
     if (!self)
         return NULL;
 
@@ -186,36 +197,23 @@ hev_socks5_session_new_tcp (int client_fd, HevSocks5SessionCloseNotify notify,
         return NULL;
     }
 
-    if (hev_logger_enabled ()) {
-        char sbuf[64], dbuf[64];
-        const char *ssa = NULL, *dsa = NULL;
-        uint16_t sport = 0, dport = 0;
+    if (LOG_ON_I ()) {
+        char buf[64];
+        const char *sa;
+        int port;
 
-        addr = (struct sockaddr *)&addr6;
-        addr_len = sizeof (addr6);
-        if (!getpeername (client_fd, addr, &addr_len)) {
-            if (sizeof (addr6) == addr_len) {
-                ssa =
-                    inet_ntop (AF_INET6, &addr6.sin6_addr, sbuf, sizeof (sbuf));
-                sport = ntohs (addr6.sin6_port);
-            }
+        sa = inet_ntop (AF_INET6, &self->addr.sin6_addr, buf, sizeof (buf));
+        port = ntohs (self->addr.sin6_port);
 
-            if (sizeof (self->addr) == addr_len) {
-                dsa = inet_ntop (AF_INET6, &self->addr.sin6_addr, dbuf,
-                                 sizeof (dbuf));
-                dport = ntohs (self->addr.sin6_port);
-            }
-
-            LOG_I ("Session %d created TCP [%s]:%u -> [%s]:%u", client_fd, ssa,
-                   sport, dsa, dport);
-        }
+        LOG_I ("Session %s: created TCP -> [%s]:%u", self->saddr, sa, port);
     }
 
     return self;
 }
 
 HevSocks5Session *
-hev_socks5_session_new_dns (int client_fd, HevSocks5SessionCloseNotify notify,
+hev_socks5_session_new_dns (int client_fd, struct sockaddr_in6 *saddr,
+                            HevSocks5SessionCloseNotify notify,
                             void *notify_data)
 {
     HevSocks5Session *self;
@@ -223,8 +221,8 @@ hev_socks5_session_new_dns (int client_fd, HevSocks5SessionCloseNotify notify,
     socklen_t addr_len;
     ssize_t s;
 
-    self = hev_socks5_session_new (client_fd, sizeof (*self->dns), notify,
-                                   notify_data);
+    self = hev_socks5_session_new (client_fd, sizeof (*self->dns), saddr,
+                                   notify, notify_data);
     if (!self)
         return NULL;
 
@@ -242,18 +240,7 @@ hev_socks5_session_new_dns (int client_fd, HevSocks5SessionCloseNotify notify,
     self->is_dns = 1;
     self->dns->query_len = s;
 
-    if (hev_logger_enabled ()) {
-        char buf[64];
-        const char *sa = NULL;
-        uint16_t port = 0;
-
-        if (sizeof (self->addr) == addr_len) {
-            sa = inet_ntop (AF_INET6, &self->addr.sin6_addr, buf, sizeof (buf));
-            port = ntohs (self->addr.sin6_port);
-        }
-
-        LOG_I ("Session %d created DNS [%s]:%u", client_fd, sa, port);
-    }
+    LOG_I ("Session %s: created DNS", self->saddr);
 
     return self;
 }
@@ -303,7 +290,7 @@ socks5_do_connect (HevSocks5Session *self)
 
     self->remote_fd = hev_task_io_socket_socket (AF_INET6, SOCK_STREAM, 0);
     if (self->remote_fd == -1) {
-        LOG_E ("Create remote socket failed!");
+        LOG_W ("Session %s: create remote socket failed!", self->saddr);
         return STEP_CLOSE_SESSION;
     }
 
@@ -314,7 +301,7 @@ socks5_do_connect (HevSocks5Session *self)
     /* connect */
     if (hev_task_io_socket_connect (self->remote_fd, addr, addr_len,
                                     socks5_session_task_io_yielder, self) < 0) {
-        LOG_E ("Connect remote server failed!");
+        LOG_W ("Session %s: connect remote server failed!", self->saddr);
         return STEP_CLOSE_SESSION;
     }
 
@@ -365,7 +352,7 @@ socks5_write_request (HevSocks5Session *self)
     len = hev_task_io_socket_sendmsg (self->remote_fd, &mh, MSG_WAITALL,
                                       socks5_session_task_io_yielder, self);
     if (len <= 0) {
-        LOG_E ("Send socks5 request failed!");
+        LOG_W ("Session %s: send socks5 request failed!", self->saddr);
         return STEP_CLOSE_SESSION;
     }
 
@@ -384,12 +371,12 @@ socks5_read_response (HevSocks5Session *self)
                                    MSG_WAITALL, socks5_session_task_io_yielder,
                                    self);
     if (len <= 0) {
-        LOG_E ("Receive socks5 response failed!");
+        LOG_W ("Session %s: receive socks5 response failed!", self->saddr);
         return STEP_CLOSE_SESSION;
     }
     /* check socks5 version and auth method */
     if (socks5_auth.ver != 0x05 || socks5_auth.method != 0x00) {
-        LOG_E ("Invalid socks5 response!");
+        LOG_W ("Session %s: invalid socks5 response!", self->saddr);
         return STEP_CLOSE_SESSION;
     }
 
@@ -397,13 +384,13 @@ socks5_read_response (HevSocks5Session *self)
     len = hev_task_io_socket_recv (self->remote_fd, &socks5_r, 4, MSG_WAITALL,
                                    socks5_session_task_io_yielder, self);
     if (len <= 0) {
-        LOG_E ("Receive socks5 response failed!");
+        LOG_W ("Session %s: receive socks5 response failed!", self->saddr);
         return STEP_CLOSE_SESSION;
     }
 
     /* check socks5 version, rep */
     if (socks5_r.ver != 0x05 || socks5_r.rep != 0x00) {
-        LOG_E ("Invalid socks5 response!");
+        LOG_W ("Session %s: invalid socks5 response!", self->saddr);
         return STEP_CLOSE_SESSION;
     }
 
@@ -415,7 +402,7 @@ socks5_read_response (HevSocks5Session *self)
         len = 18;
         break;
     default:
-        LOG_E ("Address type isn't supported!");
+        LOG_W ("Session %s: address type isn't supported!", self->saddr);
         return STEP_CLOSE_SESSION;
     }
 
@@ -423,7 +410,7 @@ socks5_read_response (HevSocks5Session *self)
     len = hev_task_io_socket_recv (self->remote_fd, &socks5_r, len, MSG_WAITALL,
                                    socks5_session_task_io_yielder, self);
     if (len <= 0) {
-        LOG_E ("Receive socks5 response failed!");
+        LOG_W ("Session %s: receive socks5 response failed!", self->saddr);
         return STEP_CLOSE_SESSION;
     }
 
@@ -468,7 +455,7 @@ socks5_do_fwd_dns (HevSocks5Session *self)
     len = hev_task_io_socket_sendmsg (self->remote_fd, &mh, MSG_WAITALL,
                                       socks5_session_task_io_yielder, self);
     if (len <= 0) {
-        LOG_E ("Send DNS request failed!");
+        LOG_W ("Session %s: send DNS request failed!", self->saddr);
         return STEP_CLOSE_SESSION;
     }
 
@@ -476,14 +463,14 @@ socks5_do_fwd_dns (HevSocks5Session *self)
     len = hev_task_io_socket_recv (self->remote_fd, &dns_len, 2, MSG_WAITALL,
                                    socks5_session_task_io_yielder, self);
     if (len <= 0) {
-        LOG_E ("Receive DNS response failed!");
+        LOG_W ("Session %s: receive DNS response failed!", self->saddr);
         return STEP_CLOSE_SESSION;
     }
     dns_len = ntohs (dns_len);
 
     /* check dns response length */
     if (dns_len >= 2048) {
-        LOG_E ("DNS response is invalid!");
+        LOG_W ("Session %s: DNS response is invalid!", self->saddr);
         return STEP_CLOSE_SESSION;
     }
 
@@ -491,7 +478,7 @@ socks5_do_fwd_dns (HevSocks5Session *self)
     len = hev_task_io_socket_recv (self->remote_fd, buf, dns_len, MSG_WAITALL,
                                    socks5_session_task_io_yielder, self);
     if (len <= 0) {
-        LOG_E ("Receive DNS response failed!");
+        LOG_W ("Session %s: receive DNS response failed!", self->saddr);
         return STEP_CLOSE_SESSION;
     }
 
@@ -510,10 +497,10 @@ socks5_close_session (HevSocks5Session *self)
     if (!self->is_dns)
         close (self->client_fd);
 
+    LOG_I ("Session %s: closed", self->saddr);
+
     self->notify (self, self->notify_data);
     hev_socks5_session_unref (self);
-
-    LOG_I ("Session %d closed", self->client_fd);
 
     return STEP_NULL;
 }
