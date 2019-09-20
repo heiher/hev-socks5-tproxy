@@ -159,12 +159,12 @@ hev_socks5_worker_tcp_task_entry (void *data)
 
     for (;;) {
         int client_fd;
-        struct sockaddr_in6 addr6;
-        struct sockaddr *addr = (struct sockaddr *)&addr6;
-        socklen_t addr_len = sizeof (addr6);
+        struct sockaddr_in6 addr;
+        socklen_t len = sizeof (addr);
         HevSocks5Session *s;
 
-        client_fd = hev_task_io_socket_accept (self->fd_tcp, addr, &addr_len,
+        client_fd = hev_task_io_socket_accept (self->fd_tcp,
+                                               (struct sockaddr *)&addr, &len,
                                                worker_task_io_yielder, self);
         if (-1 == client_fd) {
             LOG_E ("Accept failed!");
@@ -173,7 +173,8 @@ hev_socks5_worker_tcp_task_entry (void *data)
             break;
         }
 
-        s = hev_socks5_session_new_tcp (client_fd, session_close_handler, self);
+        s = hev_socks5_session_new_tcp (client_fd, &addr, session_close_handler,
+                                        self);
         if (!s) {
             close (client_fd);
             continue;
@@ -195,12 +196,12 @@ hev_socks5_worker_dns_task_entry (void *data)
     for (;;) {
         unsigned char buf[2048];
         ssize_t len;
-        struct sockaddr_in6 addr6;
-        struct sockaddr *addr = (struct sockaddr *)&addr6;
-        socklen_t addr_len = sizeof (addr6);
+        struct sockaddr_in6 addr;
+        socklen_t addr_len = sizeof (addr);
         HevSocks5Session *s;
 
-        len = recvfrom (self->fd_dns, buf, 2048, MSG_PEEK, addr, &addr_len);
+        len = recvfrom (self->fd_dns, buf, 2048, MSG_PEEK,
+                        (struct sockaddr *)&addr, &addr_len);
         if (len == -1) {
             if (errno == EAGAIN) {
                 hev_task_yield (HEV_TASK_WAITIO);
@@ -213,8 +214,8 @@ hev_socks5_worker_dns_task_entry (void *data)
             break;
         }
 
-        s = hev_socks5_session_new_dns (self->fd_dns, session_close_handler,
-                                        self);
+        s = hev_socks5_session_new_dns (self->fd_dns, &addr,
+                                        session_close_handler, self);
         if (!s)
             continue;
 
