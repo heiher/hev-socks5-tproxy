@@ -1,22 +1,33 @@
 # Main configuration for hev-socks5-tproxy
 
 main:
+  # Worker threads
   workers: 4
 
 socks5:
+  # Socks5 server port
   port: 1080
+  # Socks5 server address
   address: 127.0.0.1
 
 tcp:
+  # TCP listen port
   port: 1088
+  # TCP listen address
   listen-address: 0.0.0.0
 
 dns:
+  # DNS port
   port: 5300
+  # DNS address
   listen-address: 0.0.0.0
 
 #misc:
-#  log-file: null # stdout, stderr or file-path
-#  log-level: warn # debug, info or error
+   # null, stdout, stderr or file-path
+#  log-file: null
+   # debug, info, warn or error
+#  log-level: warn
+   # If present, run as a daemon with this pid file
 #  pid-file: /run/hev-socks5-tproxy.pid
-#  limit-nofile: -1
+   # If present, set rlimit nofile; else use default value
+#  limit-nofile: 1024
