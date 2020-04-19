@@ -52,7 +52,7 @@ hev_config_parse_main (yaml_document_t *doc, yaml_node_t *base)
         return -1;
 
     for (pair = base->data.mapping.pairs.start;
-         pair <= base->data.mapping.pairs.top; pair++) {
+         pair < base->data.mapping.pairs.top; pair++) {
         yaml_node_t *node;
         const char *key, *value;
 
@@ -92,7 +92,7 @@ hev_config_parse_socks5 (yaml_document_t *doc, yaml_node_t *base)
         return -1;
 
     for (pair = base->data.mapping.pairs.start;
-         pair <= base->data.mapping.pairs.top; pair++) {
+         pair < base->data.mapping.pairs.top; pair++) {
         yaml_node_t *node;
         const char *key, *value;
 
@@ -139,7 +139,7 @@ hev_config_parse_tcp (yaml_document_t *doc, yaml_node_t *base)
         return -1;
 
     for (pair = base->data.mapping.pairs.start;
-         pair <= base->data.mapping.pairs.top; pair++) {
+         pair < base->data.mapping.pairs.top; pair++) {
         yaml_node_t *node;
         const char *key, *value;
 
@@ -186,7 +186,7 @@ hev_config_parse_dns (yaml_document_t *doc, yaml_node_t *base)
         return -1;
 
     for (pair = base->data.mapping.pairs.start;
-         pair <= base->data.mapping.pairs.top; pair++) {
+         pair < base->data.mapping.pairs.top; pair++) {
         yaml_node_t *node;
         const char *key, *value;
 
@@ -231,7 +231,7 @@ hev_config_parse_misc (yaml_document_t *doc, yaml_node_t *base)
         return -1;
 
     for (pair = base->data.mapping.pairs.start;
-         pair <= base->data.mapping.pairs.top; pair++) {
+         pair < base->data.mapping.pairs.top; pair++) {
         yaml_node_t *node;
         const char *key, *value;
 
@@ -272,7 +272,7 @@ hev_config_parse_doc (yaml_document_t *doc)
         return -1;
 
     for (pair = root->data.mapping.pairs.start;
-         pair <= root->data.mapping.pairs.top; pair++) {
+         pair < root->data.mapping.pairs.top; pair++) {
         yaml_node_t *node;
         const char *key;
         int res = 0;
