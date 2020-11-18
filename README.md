@@ -118,7 +118,7 @@ TP_DNS_PORT=5300
 
 if [ ! -e ${NET_CLS_DIR} ]; then
 	sudo sh -c "mkdir -p ${NET_CLS_DIR}; \
-		chmod 0666 ${NET_CLS_DIR}/tasks; \
+		chmod 0666 ${NET_CLS_DIR}/cgroup.procs; \
 		echo ${NET_CLS_ID} > ${NET_CLS_DIR}/net_cls.classid; \
 		iptables -t nat -D OUTPUT -p tcp \
 			-m cgroup --cgroup ${NET_CLS_ID} \
@@ -146,7 +146,7 @@ if [ ! -e ${NET_CLS_DIR} ]; then
 			-j REDIRECT --to-ports ${TP_DNS_PORT};" 2>&1 2> /dev/null
 fi
 
-echo $$ > ${NET_CLS_DIR}/tasks
+echo $$ > ${NET_CLS_DIR}/cgroup.procs
 
 exec "$@"
 ```
