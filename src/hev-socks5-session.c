@@ -24,7 +24,7 @@
 #include "hev-logger.h"
 
 #define SESSION_HP (10)
-#define TASK_STACK_SIZE (8192)
+#define TASK_STACK_SIZE (16384)
 
 static void hev_socks5_session_task_entry (void *data);
 
