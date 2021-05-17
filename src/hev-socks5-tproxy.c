@@ -2,8 +2,8 @@
  ============================================================================
  Name        : hev-socks5-tproxy.c
  Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2017 - 2019 everyone.
- Description : Socks5 tproxy
+ Copyright   : Copyright (c) 2017 - 2021 hev
+ Description : Socks5 TProxy
  ============================================================================
  */
 
@@ -12,95 +12,94 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
-#include <pthread.h>
+#include <arpa/inet.h>
 #include <sys/ioctl.h>
+#include <sys/eventfd.h>
+#include <linux/netfilter_ipv4.h>
 
-#include "hev-socks5-tproxy.h"
-#include "hev-socks5-worker.h"
+#include <hev-task.h>
+#include <hev-task-io.h>
+#include <hev-task-io-socket.h>
+#include <hev-task-dns.h>
+#include <hev-task-system.h>
+#include <hev-memory-allocator.h>
+
+#include "hev-list.h"
+#include "hev-rbtree.h"
 #include "hev-config.h"
 #include "hev-logger.h"
-#include "hev-task.h"
-#include "hev-task-io.h"
-#include "hev-task-io-socket.h"
-#include "hev-task-system.h"
-#include "hev-memory-allocator.h"
+#include "hev-compiler.h"
+#include "hev-config-const.h"
+#include "hev-tsocks-cache.h"
+#include "hev-socks5-session-tcp.h"
+#include "hev-socks5-session-udp.h"
 
-typedef struct _HevSocks5WorkerData HevSocks5WorkerData;
-
-struct _HevSocks5WorkerData
-{
-    int fd_tcp;
-    int fd_dns;
-    HevSocks5Worker *worker;
-};
-
-static unsigned int workers;
-static HevSocks5WorkerData *worker_list;
+#include "hev-socks5-tproxy.h"
 
 static void sigint_handler (int signum);
-static void *work_thread_handler (void *data);
-static int hev_socks5_tproxy_tcp_socket (int *reuseport);
-static int hev_socks5_tproxy_dns_socket (int *reuseport);
+static int hev_socks5_tproxy_tcp_socket (void);
+static int hev_socks5_tproxy_udp_socket (void);
+static void hev_socks5_tcp_task_entry (void *data);
+static void hev_socks5_udp_task_entry (void *data);
+static void hev_socks5_event_task_entry (void *data);
+
+static int quit;
+static int fd_event;
+
+static HevList tcp_set;
+static HevRBTree udp_set;
+
+static HevTask *task_tcp;
+static HevTask *task_udp;
+static HevTask *task_event;
 
 int
 hev_socks5_tproxy_init (void)
 {
-    int i, reuseport = 1;
-    HevSocks5WorkerData *wl;
+    LOG_D ("socks5 tproxy init");
 
     if (hev_task_system_init () < 0) {
-        LOG_E ("Init task system failed!");
+        LOG_E ("socks5 tproxy task system");
         goto exit;
     }
 
-    workers = hev_config_get_workers ();
-    wl = hev_malloc0 (sizeof (HevSocks5WorkerData *) * workers);
-    if (!wl) {
-        LOG_E ("Allocate worker list failed!");
-        goto exit_free_sys;
+    if (hev_tsocks_cache_init () < 0) {
+        LOG_E ("socks5 tproxy tsocks cache");
+        goto exit;
     }
 
     if (signal (SIGPIPE, SIG_IGN) == SIG_ERR) {
-        LOG_E ("Set signal pipe's handler failed!");
-        goto exit_free_wl;
+        LOG_E ("socks5 tproxy sigpipe");
+        goto free;
     }
 
     if (signal (SIGINT, sigint_handler) == SIG_ERR) {
-        LOG_E ("Set signal int's handler failed!");
-        goto exit_free_wl;
+        LOG_E ("socks5 tproxy sigint");
+        goto free;
     }
 
-    wl[0].fd_tcp = hev_socks5_tproxy_tcp_socket (&reuseport);
-    if ((wl[0].fd_tcp < 0) && (!reuseport))
-        wl[0].fd_tcp = hev_socks5_tproxy_tcp_socket (&reuseport);
-    wl[0].fd_dns = hev_socks5_tproxy_dns_socket (&reuseport);
-    if ((wl[0].fd_tcp < 0) && (wl[0].fd_dns < 0)) {
-        LOG_E ("TCP and DNS listen failed!");
-        goto exit_close_fds;
+    task_event = hev_task_new (-1);
+    if (!task_event) {
+        LOG_E ("socks5 tproxy task event");
+        goto free;
     }
 
-    for (i = 1; i < workers; i++) {
-        wl[i].fd_tcp = hev_socks5_tproxy_tcp_socket (&reuseport);
-        if (wl[i].fd_tcp < 0)
-            wl[i].fd_tcp = wl[0].fd_tcp;
-        wl[i].fd_dns = hev_socks5_tproxy_dns_socket (&reuseport);
-        if (wl[i].fd_dns < 0)
-            wl[i].fd_dns = wl[0].fd_dns;
+    task_tcp = hev_task_new (-1);
+    if (!task_tcp) {
+        LOG_E ("socks5 tproxy task tcp");
+        goto free;
     }
 
-    worker_list = wl;
+    task_udp = hev_task_new (-1);
+    if (!task_udp) {
+        LOG_E ("socks5 tproxy task udp");
+        goto free;
+    }
 
     return 0;
 
-exit_close_fds:
-    if (wl[0].fd_tcp >= 0)
-        close (wl[0].fd_tcp);
-    if (wl[0].fd_dns >= 0)
-        close (wl[0].fd_dns);
-exit_free_wl:
-    hev_free (wl);
-exit_free_sys:
-    hev_task_system_fini ();
+free:
+    hev_socks5_tproxy_fini ();
 exit:
     return -1;
 }
@@ -108,58 +107,45 @@ exit:
 void
 hev_socks5_tproxy_fini (void)
 {
-    hev_free (worker_list);
+    LOG_D ("socks5 tproxy fini");
+
+    if (task_event)
+        hev_task_unref (task_event);
+    if (task_tcp)
+        hev_task_unref (task_tcp);
+    if (task_udp)
+        hev_task_unref (task_udp);
+
+    hev_tsocks_cache_fini ();
     hev_task_system_fini ();
 }
 
-int
+void
 hev_socks5_tproxy_run (void)
 {
-    int i;
-    pthread_t work_threads[workers];
-    HevSocks5WorkerData *w0 = &worker_list[0];
+    LOG_D ("socks5 tproxy run");
 
-    w0->worker = hev_socks5_worker_new (w0->fd_tcp, w0->fd_dns);
-    if (!w0->worker) {
-        LOG_E ("Create socks5 worker 0 failed!");
-        return -1;
-    }
+    hev_task_run (task_event, hev_socks5_event_task_entry, NULL);
 
-    hev_socks5_worker_start (w0->worker);
+    if (task_tcp)
+        hev_task_run (task_tcp, hev_socks5_tcp_task_entry, NULL);
 
-    for (i = 1; i < workers; i++) {
-        pthread_create (&work_threads[i], NULL, work_thread_handler,
-                        (void *)(intptr_t)i);
-    }
+    if (task_udp)
+        hev_task_run (task_udp, hev_socks5_udp_task_entry, NULL);
 
     hev_task_system_run ();
-
-    for (i = 1; i < workers; i++) {
-        pthread_join (work_threads[i], NULL);
-    }
-
-    hev_socks5_worker_destroy (w0->worker);
-    if (w0->fd_tcp >= 0)
-        close (w0->fd_tcp);
-    if (w0->fd_dns >= 0)
-        close (w0->fd_dns);
-
-    return 0;
 }
 
 void
 hev_socks5_tproxy_stop (void)
 {
-    int i;
+    LOG_D ("socks5 tproxy stop");
 
-    for (i = 0; i < workers; i++) {
-        HevSocks5WorkerData *wi = &worker_list[i];
+    if (fd_event < 0)
+        return;
 
-        if (!wi->worker)
-            continue;
-
-        hev_socks5_worker_stop (wi->worker);
-    }
+    if (eventfd_write (fd_event, 1) < 0)
+        LOG_E ("socks5 tproxy write event");
 }
 
 static void
@@ -168,130 +154,499 @@ sigint_handler (int signum)
     hev_socks5_tproxy_stop ();
 }
 
-static void *
-work_thread_handler (void *data)
+static int
+hev_socks5_tproxy_tcp_socket (void)
 {
-    int i = (intptr_t)data;
-    HevSocks5WorkerData *wi = &worker_list[i];
+    struct addrinfo hints = { 0 };
+    struct addrinfo *result;
+    const char *addr;
+    const char *port;
+    int one = 1;
+    int res;
+    int fd;
 
-    if (hev_task_system_init () < 0) {
-        LOG_E ("Init task system failed!");
+    LOG_D ("socks5 tproxy tcp socket");
+
+    addr = hev_config_get_tcp_address ();
+    port = hev_config_get_tcp_port ();
+
+    hints.ai_family = AF_INET6;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
+
+    res = hev_task_dns_getaddrinfo (addr, port, &hints, &result);
+    if (res < 0) {
+        LOG_E ("socks5 tproxy tcp addr");
         goto exit;
     }
 
-    wi->worker = hev_socks5_worker_new (wi->fd_tcp, wi->fd_dns);
-    if (!wi->worker) {
-        LOG_E ("Create socks5 worker %d failed!", i);
-        goto exit_free_sys;
+    fd = hev_task_io_socket_socket (AF_INET6, SOCK_STREAM, 0);
+    if (fd < 0) {
+        LOG_E ("socks5 tproxy tcp socket");
+        goto free;
     }
 
-    hev_socks5_worker_start (wi->worker);
+    res = setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof (one));
+    if (res < 0) {
+        LOG_E ("socks5 tproxy tcp socket reuse");
+        goto close;
+    }
 
-    hev_task_system_run ();
+    res = setsockopt (fd, SOL_IP, IP_TRANSPARENT, &one, sizeof (one));
+    if (res < 0) {
+        LOG_E ("socks5 tproxy tcp ipv4 transparent");
+        goto close;
+    }
 
-    hev_socks5_worker_destroy (wi->worker);
-    if (wi->fd_tcp >= 0)
-        close (wi->fd_tcp);
-    if (wi->fd_dns >= 0)
-        close (wi->fd_dns);
+    res = setsockopt (fd, SOL_IPV6, IPV6_TRANSPARENT, &one, sizeof (one));
+    if (res < 0) {
+        LOG_E ("socks5 tproxy tcp ipv6 transparent");
+        goto close;
+    }
 
-exit_free_sys:
-    hev_task_system_fini ();
+    res = bind (fd, result->ai_addr, result->ai_addrlen);
+    if (res < 0) {
+        LOG_E ("socks5 tproxy tcp socket bind");
+        goto close;
+    }
+
+    res = listen (fd, 100);
+    if (res < 0) {
+        LOG_E ("socks5 tproxy tcp socket listen");
+        goto close;
+    }
+
+    freeaddrinfo (result);
+
+    return fd;
+
+close:
+    close (fd);
+free:
+    freeaddrinfo (result);
 exit:
+    return -1;
+}
+
+static int
+hev_socks5_tproxy_udp_socket (void)
+{
+    struct addrinfo hints = { 0 };
+    struct addrinfo *result;
+    const char *addr;
+    const char *port;
+    int one = 1;
+    int res;
+    int fd;
+
+    LOG_D ("socks5 tproxy udp socket");
+
+    addr = hev_config_get_udp_address ();
+    port = hev_config_get_udp_port ();
+
+    hints.ai_family = AF_INET6;
+    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_flags = AI_PASSIVE;
+
+    res = hev_task_dns_getaddrinfo (addr, port, &hints, &result);
+    if (res < 0) {
+        LOG_E ("socks5 tproxy udp addr");
+        goto exit;
+    }
+
+    fd = hev_task_io_socket_socket (AF_INET6, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        LOG_E ("socks5 tproxy udp socket");
+        goto free;
+    }
+
+    res = setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof (one));
+    if (res < 0) {
+        LOG_E ("socks5 tproxy udp socket reuse");
+        goto close;
+    }
+
+    res = setsockopt (fd, SOL_IP, IP_TRANSPARENT, &one, sizeof (one));
+    if (res < 0) {
+        LOG_E ("socks5 tproxy udp ipv4 transparent");
+        goto close;
+    }
+
+    res = setsockopt (fd, SOL_IPV6, IPV6_TRANSPARENT, &one, sizeof (one));
+    if (res < 0) {
+        LOG_E ("socks5 tproxy udp ipv6 transparent");
+        goto close;
+    }
+
+    res = setsockopt (fd, SOL_IP, IP_RECVORIGDSTADDR, &one, sizeof (one));
+    if (res < 0) {
+        LOG_E ("socks5 tproxy udp ipv4 orig dest");
+        goto close;
+    }
+
+    res = setsockopt (fd, SOL_IPV6, IPV6_RECVORIGDSTADDR, &one, sizeof (one));
+    if (res < 0) {
+        LOG_E ("socks5 tproxy udp ipv6 orig dest");
+        goto close;
+    }
+
+    res = bind (fd, result->ai_addr, result->ai_addrlen);
+    if (res < 0) {
+        LOG_E ("socks5 tproxy udp socket bind");
+        goto close;
+    }
+
+    freeaddrinfo (result);
+
+    return fd;
+
+close:
+    close (fd);
+free:
+    freeaddrinfo (result);
+exit:
+    return -1;
+}
+
+static int
+task_io_yielder (HevTaskYieldType type, void *data)
+{
+    hev_task_yield (type);
+
+    return quit ? -1 : 0;
+}
+
+static void
+hev_socks5_event_task_entry (void *data)
+{
+    eventfd_t val;
+
+    LOG_D ("socks5 event task run");
+
+    fd_event = eventfd (0, EFD_NONBLOCK);
+    if (fd_event < 0) {
+        LOG_E ("socks5 eventfd");
+        return;
+    }
+
+    hev_task_add_fd (hev_task_self (), fd_event, POLLIN);
+    hev_task_io_read (fd_event, &val, sizeof (val), NULL, NULL);
+
+    quit = 1;
+
+    if (task_tcp)
+        hev_task_wakeup (task_tcp);
+    if (task_udp)
+        hev_task_wakeup (task_udp);
+
+    close (fd_event);
+    fd_event = -1;
+    task_event = NULL;
+}
+
+static void
+hev_socks5_tcp_session_task_entry (void *data)
+{
+    HevSocks5SessionTCP *tcp = data;
+
+    hev_socks5_session_run (HEV_SOCKS5_SESSION (tcp));
+
+    hev_list_del (&tcp_set, &tcp->node);
+    hev_socks5_session_destroy (HEV_SOCKS5_SESSION (tcp));
+}
+
+static void
+hev_socks5_tcp_session_new (int fd)
+{
+    HevSocks5SessionTCP *tcp;
+    struct sockaddr_in6 addr;
+    socklen_t addrlen;
+    HevTask *task;
+    int res;
+
+    LOG_D ("socks5 tcp session new");
+
+    addrlen = sizeof (addr);
+    res = getsockname (fd, (struct sockaddr *)&addr, &addrlen);
+    if (res < 0) {
+        LOG_E ("socks5 tcp orig dest");
+        close (fd);
+        return;
+    }
+
+    tcp = hev_socks5_session_tcp_new ((struct sockaddr *)&addr, fd);
+    if (!tcp) {
+        close (fd);
+        return;
+    }
+
+    task = hev_task_new (TASK_STACK_SIZE);
+    if (!task) {
+        hev_socks5_session_destroy (HEV_SOCKS5_SESSION (tcp));
+        return;
+    }
+
+    HEV_SOCKS5_SESSION (tcp)->task = task;
+    hev_list_add_tail (&tcp_set, &tcp->node);
+    hev_task_run (task, hev_socks5_tcp_session_task_entry, tcp);
+}
+
+static void
+hev_socks5_tcp_task_entry (void *data)
+{
+    HevListNode *node;
+    int fd;
+
+    LOG_D ("socks5 tcp task run");
+
+    fd = hev_socks5_tproxy_tcp_socket ();
+    if (fd < 0)
+        goto exit;
+
+    hev_task_add_fd (hev_task_self (), fd, POLLIN);
+
+    for (;;) {
+        int nfd;
+
+        nfd = hev_task_io_socket_accept (fd, NULL, NULL, task_io_yielder, NULL);
+        if (nfd == -1) {
+            LOG_W ("socks5 tcp accept");
+            continue;
+        } else if (nfd < 0) {
+            break;
+        }
+
+        hev_socks5_tcp_session_new (nfd);
+    }
+
+    node = hev_list_first (&tcp_set);
+    for (; node; node = hev_list_node_next (node)) {
+        HevSocks5SessionTCP *tcp;
+
+        tcp = container_of (node, HevSocks5SessionTCP, node);
+        hev_socks5_session_terminate (HEV_SOCKS5_SESSION (tcp));
+    }
+
+    close (fd);
+exit:
+    task_tcp = NULL;
+}
+
+static int
+hev_socks5_udp_recvmsg (int fd, struct sockaddr *saddr, struct sockaddr *daddr,
+                        void *buf, size_t len)
+{
+    union
+    {
+        char buf[CMSG_SPACE (sizeof (struct sockaddr_in6))];
+        struct cmsghdr align;
+    } u;
+    struct msghdr mh = { 0 };
+    struct cmsghdr *cm;
+    struct iovec iov;
+    int res;
+
+    iov.iov_base = buf;
+    iov.iov_len = len;
+    mh.msg_iov = &iov;
+    mh.msg_iovlen = 1;
+    mh.msg_name = saddr;
+    mh.msg_namelen = sizeof (struct sockaddr_in6);
+    mh.msg_control = u.buf;
+    mh.msg_controllen = sizeof (u.buf);
+
+    res = hev_task_io_socket_recvmsg (fd, &mh, 0, task_io_yielder, NULL);
+    if (res < 0)
+        return res;
+
+    for (cm = CMSG_FIRSTHDR (&mh); cm; cm = CMSG_NXTHDR (&mh, cm)) {
+        if (cm->cmsg_level == SOL_IP && cm->cmsg_type == IP_ORIGDSTADDR) {
+            struct sockaddr_in6 *dap;
+            struct sockaddr_in *sap;
+
+            dap = (struct sockaddr_in6 *)daddr;
+            sap = (struct sockaddr_in *)CMSG_DATA (cm);
+
+            dap->sin6_family = AF_INET6;
+            dap->sin6_port = sap->sin_port;
+            memset (&dap->sin6_addr, 0, 10);
+            dap->sin6_addr.s6_addr[10] = 0xff;
+            dap->sin6_addr.s6_addr[11] = 0xff;
+            memcpy (&dap->sin6_addr.s6_addr[12], &sap->sin_addr, 4);
+            break;
+        }
+        if (cm->cmsg_level == SOL_IPV6 && cm->cmsg_type == IPV6_ORIGDSTADDR) {
+            struct sockaddr_in6 *dap;
+            struct sockaddr_in *sap;
+
+            dap = (struct sockaddr_in6 *)daddr;
+            sap = (struct sockaddr_in *)CMSG_DATA (cm);
+
+            memcpy (dap, sap, sizeof (struct sockaddr_in6));
+            break;
+        }
+    }
+
+    return res;
+}
+
+static HevSocks5SessionUDP *
+hev_socks5_udp_session_find (struct sockaddr *addr)
+{
+    HevRBTreeNode *node = udp_set.root;
+
+    while (node) {
+        HevSocks5SessionUDP *this;
+        int res;
+
+        this = container_of (node, HevSocks5SessionUDP, node);
+        res = memcmp (&this->addr, addr, sizeof (struct sockaddr_in6));
+
+        if (res < 0)
+            node = node->left;
+        else if (res > 0)
+            node = node->right;
+        else
+            return this;
+    }
+
     return NULL;
 }
 
-static int
-hev_socks5_tproxy_tcp_socket (int *reuseport)
+static void
+hev_socks5_udp_session_add (HevSocks5SessionUDP *udp)
 {
-    int fd, ret, reuse = 1;
-    struct sockaddr *addr;
-    socklen_t addr_len;
+    HevRBTreeNode **new = &udp_set.root, *parent = NULL;
 
-    addr = hev_config_get_tcp_listen_address (&addr_len);
-    if (!addr)
-        goto exit;
+    while (*new) {
+        HevSocks5SessionUDP *this;
+        int res;
 
-    fd = hev_task_io_socket_socket (AF_INET6, SOCK_STREAM, 0);
-    if (fd == -1) {
-        LOG_E ("Create socket failed!");
-        goto exit;
+        this = container_of (*new, HevSocks5SessionUDP, node);
+        res = memcmp (&this->addr, &udp->addr, sizeof (struct sockaddr_in6));
+
+        parent = *new;
+        if (res < 0)
+            new = &((*new)->left);
+        else if (res > 0)
+            new = &((*new)->right);
     }
 
-    ret = setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof (reuse));
-    if (ret == -1) {
-        LOG_E ("Set reuse address failed!");
-        goto exit_close;
+    hev_rbtree_node_link (&udp->node, parent, new);
+    hev_rbtree_insert_color (&udp_set, &udp->node);
+}
+
+static void
+hev_socks5_udp_session_del (HevSocks5SessionUDP *udp)
+{
+    hev_rbtree_erase (&udp_set, &udp->node);
+}
+
+static void
+hev_socks5_udp_session_task_entry (void *data)
+{
+    HevSocks5SessionUDP *udp = data;
+
+    hev_socks5_session_run (HEV_SOCKS5_SESSION (udp));
+
+    hev_socks5_udp_session_del (udp);
+    hev_socks5_session_destroy (HEV_SOCKS5_SESSION (udp));
+}
+
+static HevSocks5SessionUDP *
+hev_socks5_udp_session_new (struct sockaddr *addr)
+{
+    HevSocks5SessionUDP *udp;
+    HevTask *task;
+
+    LOG_D ("socks5 udp session new");
+
+    udp = hev_socks5_session_udp_new (addr);
+    if (!udp)
+        return NULL;
+
+    task = hev_task_new (TASK_STACK_SIZE);
+    if (!task) {
+        hev_socks5_session_destroy (HEV_SOCKS5_SESSION (udp));
+        return NULL;
     }
 
-    if (*reuseport) {
-        ret = setsockopt (fd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof (reuse));
-        if (ret == -1) {
-            *reuseport = 0;
-            goto exit_close;
-        }
-    }
+    HEV_SOCKS5_SESSION (udp)->task = task;
+    hev_socks5_udp_session_add (udp);
+    hev_task_run (task, hev_socks5_udp_session_task_entry, udp);
 
-    ret = bind (fd, addr, addr_len);
-    if (ret == -1) {
-        LOG_E ("Bind address failed!");
-        goto exit_close;
-    }
-    ret = listen (fd, 100);
-    if (ret == -1) {
-        LOG_E ("Listen failed!");
-        goto exit_close;
-    }
-
-    return fd;
-
-exit_close:
-    close (fd);
-exit:
-    return -1;
+    return udp;
 }
 
 static int
-hev_socks5_tproxy_dns_socket (int *reuseport)
+hev_socks5_udp_dispatch (struct sockaddr *saddr, struct sockaddr *daddr,
+                         void *data, size_t len)
 {
-    int fd, ret, reuse = 1;
-    struct sockaddr *addr;
-    socklen_t addr_len;
+    HevSocks5SessionUDP *udp;
+    int res;
 
-    addr = hev_config_get_dns_listen_address (&addr_len);
-    if (!addr)
-        goto exit;
-
-    fd = hev_task_io_socket_socket (AF_INET6, SOCK_DGRAM, 0);
-    if (fd == -1) {
-        LOG_E ("Create socket failed!");
-        goto exit;
+    udp = hev_socks5_udp_session_find (saddr);
+    if (!udp) {
+        udp = hev_socks5_udp_session_new (saddr);
+        if (!udp)
+            return -1;
     }
 
-    ret = setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof (reuse));
-    if (ret == -1) {
-        LOG_E ("Set reuse address failed!");
-        goto exit_close;
-    }
+    res = hev_socks5_session_udp_send (udp, data, len, daddr);
 
-    if (*reuseport) {
-        ret = setsockopt (fd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof (reuse));
-        if (ret == -1) {
-            *reuseport = 0;
-            goto exit_close;
+    return res;
+}
+
+static void
+hev_socks5_udp_task_entry (void *data)
+{
+    HevRBTreeNode *node;
+    int fd;
+
+    LOG_D ("socks5 udp task run");
+
+    fd = hev_socks5_tproxy_udp_socket ();
+    if (fd < 0)
+        goto exit;
+
+    hev_task_add_fd (hev_task_self (), fd, POLLIN);
+
+    for (;;) {
+        struct sockaddr_in6 saddr = { 0 };
+        struct sockaddr_in6 daddr = { 0 };
+        struct sockaddr *sap;
+        struct sockaddr *dap;
+        void *buf;
+        int res;
+
+        buf = hev_malloc (UDP_BUF_SIZE);
+        sap = (struct sockaddr *)&saddr;
+        dap = (struct sockaddr *)&daddr;
+
+        res = hev_socks5_udp_recvmsg (fd, sap, dap, buf, UDP_BUF_SIZE);
+        if (res == -1) {
+            LOG_W ("socks5 udp recvmsg");
+            hev_free (buf);
+            continue;
+        } else if (res <= 0) {
+            hev_free (buf);
+            break;
         }
+
+        res = hev_socks5_udp_dispatch (sap, dap, buf, res);
+        if (res < 0)
+            hev_free (buf);
     }
 
-    ret = bind (fd, addr, addr_len);
-    if (ret == -1) {
-        LOG_E ("Bind address failed!");
-        goto exit_close;
+    node = hev_rbtree_first (&udp_set);
+    for (; node; node = hev_rbtree_node_next (node)) {
+        HevSocks5SessionUDP *udp;
+
+        udp = container_of (node, HevSocks5SessionUDP, node);
+        hev_socks5_session_terminate (HEV_SOCKS5_SESSION (udp));
     }
 
-    return fd;
-
-exit_close:
     close (fd);
 exit:
-    return -1;
+    task_udp = NULL;
 }

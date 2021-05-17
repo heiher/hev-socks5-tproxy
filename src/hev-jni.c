@@ -2,7 +2,7 @@
  ============================================================================
  Name        : hev-jni.c
  Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2017 everyone.
+ Copyright   : Copyright (c) 2017 - 2021 hev
  Description : JNI
  ============================================================================
  */
