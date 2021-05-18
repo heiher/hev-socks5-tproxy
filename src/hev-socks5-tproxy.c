@@ -15,7 +15,6 @@
 #include <arpa/inet.h>
 #include <sys/ioctl.h>
 #include <sys/eventfd.h>
-#include <linux/netfilter_ipv4.h>
 
 #include <hev-task.h>
 #include <hev-task-io.h>
