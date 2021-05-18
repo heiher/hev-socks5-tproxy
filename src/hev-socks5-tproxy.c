@@ -37,8 +37,6 @@
 #include "hev-socks5-tproxy.h"
 
 static void sigint_handler (int signum);
-static int hev_socks5_tproxy_tcp_socket (void);
-static int hev_socks5_tproxy_udp_socket (void);
 static void hev_socks5_tcp_task_entry (void *data);
 static void hev_socks5_udp_task_entry (void *data);
 static void hev_socks5_event_task_entry (void *data);
@@ -155,10 +153,44 @@ sigint_handler (int signum)
 }
 
 static int
-hev_socks5_tproxy_tcp_socket (void)
+hev_socks5_tproxy_sockaddr (const char *addr, const char *port, int type,
+                            struct sockaddr_in6 *saddr)
 {
     struct addrinfo hints = { 0 };
     struct addrinfo *result;
+    int res;
+
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = type;
+    hints.ai_flags = AI_PASSIVE;
+
+    res = hev_task_dns_getaddrinfo (addr, port, &hints, &result);
+    if (res < 0)
+        return -1;
+
+    if (result->ai_family == AF_INET) {
+        struct sockaddr_in *adp;
+
+        adp = (struct sockaddr_in *)result->ai_addr;
+        saddr->sin6_family = AF_INET6;
+        saddr->sin6_port = adp->sin_port;
+        memset (&saddr->sin6_addr, 0, 10);
+        saddr->sin6_addr.s6_addr[10] = 0xff;
+        saddr->sin6_addr.s6_addr[11] = 0xff;
+        memcpy (&saddr->sin6_addr.s6_addr[12], &adp->sin_addr, 4);
+    } else if (result->ai_family == AF_INET6) {
+        memcpy (saddr, result->ai_addr, sizeof (*saddr));
+    }
+
+    freeaddrinfo (result);
+
+    return 0;
+}
+
+static int
+hev_socks5_tproxy_tcp_socket (void)
+{
+    struct sockaddr_in6 saddr;
     const char *addr;
     const char *port;
     int one = 1;
@@ -170,11 +202,7 @@ hev_socks5_tproxy_tcp_socket (void)
     addr = hev_config_get_tcp_address ();
     port = hev_config_get_tcp_port ();
 
-    hints.ai_family = AF_INET6;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;
-
-    res = hev_task_dns_getaddrinfo (addr, port, &hints, &result);
+    res = hev_socks5_tproxy_sockaddr (addr, port, SOCK_STREAM, &saddr);
     if (res < 0) {
         LOG_E ("socks5 tproxy tcp addr");
         goto exit;
@@ -183,7 +211,7 @@ hev_socks5_tproxy_tcp_socket (void)
     fd = hev_task_io_socket_socket (AF_INET6, SOCK_STREAM, 0);
     if (fd < 0) {
         LOG_E ("socks5 tproxy tcp socket");
-        goto free;
+        goto exit;
     }
 
     res = setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof (one));
@@ -204,7 +232,7 @@ hev_socks5_tproxy_tcp_socket (void)
         goto close;
     }
 
-    res = bind (fd, result->ai_addr, result->ai_addrlen);
+    res = bind (fd, (struct sockaddr *)&saddr, sizeof (saddr));
     if (res < 0) {
         LOG_E ("socks5 tproxy tcp socket bind");
         goto close;
@@ -216,14 +244,10 @@ hev_socks5_tproxy_tcp_socket (void)
         goto close;
     }
 
-    freeaddrinfo (result);
-
     return fd;
 
 close:
     close (fd);
-free:
-    freeaddrinfo (result);
 exit:
     return -1;
 }
@@ -231,8 +255,7 @@ exit:
 static int
 hev_socks5_tproxy_udp_socket (void)
 {
-    struct addrinfo hints = { 0 };
-    struct addrinfo *result;
+    struct sockaddr_in6 saddr;
     const char *addr;
     const char *port;
     int one = 1;
@@ -244,11 +267,7 @@ hev_socks5_tproxy_udp_socket (void)
     addr = hev_config_get_udp_address ();
     port = hev_config_get_udp_port ();
 
-    hints.ai_family = AF_INET6;
-    hints.ai_socktype = SOCK_DGRAM;
-    hints.ai_flags = AI_PASSIVE;
-
-    res = hev_task_dns_getaddrinfo (addr, port, &hints, &result);
+    res = hev_socks5_tproxy_sockaddr (addr, port, SOCK_DGRAM, &saddr);
     if (res < 0) {
         LOG_E ("socks5 tproxy udp addr");
         goto exit;
@@ -257,7 +276,7 @@ hev_socks5_tproxy_udp_socket (void)
     fd = hev_task_io_socket_socket (AF_INET6, SOCK_DGRAM, 0);
     if (fd < 0) {
         LOG_E ("socks5 tproxy udp socket");
-        goto free;
+        goto exit;
     }
 
     res = setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof (one));
@@ -290,20 +309,16 @@ hev_socks5_tproxy_udp_socket (void)
         goto close;
     }
 
-    res = bind (fd, result->ai_addr, result->ai_addrlen);
+    res = bind (fd, (struct sockaddr *)&saddr, sizeof (saddr));
     if (res < 0) {
         LOG_E ("socks5 tproxy udp socket bind");
         goto close;
     }
 
-    freeaddrinfo (result);
-
     return fd;
 
 close:
     close (fd);
-free:
-    freeaddrinfo (result);
 exit:
     return -1;
 }
