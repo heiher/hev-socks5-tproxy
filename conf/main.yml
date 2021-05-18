@@ -15,7 +15,7 @@ tcp:
 
 udp:
   # UDP port
-  port: 1089
+  port: 1088
   # UDP address
   address: '::'
 
