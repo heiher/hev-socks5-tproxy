@@ -266,6 +266,7 @@ hev_socks5_session_udp_send (HevSocks5SessionUDP *self, void *data, size_t len,
 
     frame->len = len;
     frame->data = data;
+    memset (&frame->node, 0, sizeof (frame->node));
     memcpy (&frame->addr, addr, sizeof (struct sockaddr_in6));
 
     self->frames++;
