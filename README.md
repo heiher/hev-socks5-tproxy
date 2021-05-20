@@ -65,6 +65,10 @@ bin/hev-socks5-tproxy conf/main.yml
 
 #### Bypass ipset
 
+DON'T FORGOT TO ADD UPSTREAM ADDRESS TO BYPASS IPSET!!
+
+Or use iptables uid-owner match to exclude proxy process.
+
 ```bash
 # IPv4
 ipset create byp4 hash:net family inet hashsize 2048 maxelem 65536
@@ -102,28 +106,34 @@ ipset add byp6 ff00::/8
 
 #### Netfilter and Routing
 
+Gateway and Local modes
+
 ```bash
 # IPv4
-iptables -t mangle -A PREROUTING -m mark ! --mark 1088 -j RETURN
-iptables -t mangle -A PREROUTING -p tcp -j TPROXY --on-port 1088
-iptables -t mangle -A PREROUTING -p udp -j TPROXY --on-port 1088
-# Bypass ipset
-iptables -t mangle -A OUTPUT -m set --match-set byp4 dst -j RETURN
-iptables -t mangle -A OUTPUT -j MARK --set-mark 1088
+iptables -t mangle -A PREROUTING -m set --match-set byp4 dst -j RETURN
+iptables -t mangle -A PREROUTING -p tcp -j TPROXY --on-port 1088 --tproxy-mark 1088
+iptables -t mangle -A PREROUTING -p udp -j TPROXY --on-port 1088 --tproxy-mark 1088
 
 ip rule add fwmark 1088 table 100
 ip route add local default dev lo table 100
 
+# Only for local mode
+iptables -t mangle -A OUTPUT -m set --match-set byp4 dst -j RETURN
+iptables -t mangle -A OUTPUT -p tcp -j MARK --set-mark 1088
+iptables -t mangle -A OUTPUT -p udp -j MARK --set-mark 1088
+
 # IPv6
-ip6tables -t mangle -A PREROUTING -m mark ! --mark 1088 -j RETURN
-ip6tables -t mangle -A PREROUTING -p tcp -j TPROXY --on-port 1088
-ip6tables -t mangle -A PREROUTING -p udp -j TPROXY --on-port 1088
-# Bypass ipset
-ip6tables -t mangle -A OUTPUT -m set --match-set byp6 dst -j RETURN
-ip6tables -t mangle -A OUTPUT -j MARK --set-mark 1088
+ip6tables -t mangle -A PREROUTING -m set --match-set byp6 dst -j RETURN
+ip6tables -t mangle -A PREROUTING -p tcp -j TPROXY --on-port 1088 --tproxy-mark 1088
+ip6tables -t mangle -A PREROUTING -p udp -j TPROXY --on-port 1088 --tproxy-mark 1088
 
 ip -6 rule add fwmark 1088 table 100
 ip -6 route add local default dev lo table 100
+
+# Only for local mode
+ip6tables -t mangle -A OUTPUT -m set --match-set byp6 dst -j RETURN
+ip6tables -t mangle -A OUTPUT -p tcp -j MARK --set-mark 1088
+ip6tables -t mangle -A OUTPUT -p udp -j MARK --set-mark 1088
 ```
 
 ## Authors
