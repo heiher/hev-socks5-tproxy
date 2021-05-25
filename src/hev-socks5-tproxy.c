@@ -375,6 +375,7 @@ hev_socks5_tcp_session_new (int fd)
     HevSocks5SessionTCP *tcp;
     struct sockaddr_in6 addr;
     socklen_t addrlen;
+    int stack_size;
     HevTask *task;
     int res;
 
@@ -394,7 +395,8 @@ hev_socks5_tcp_session_new (int fd)
         return;
     }
 
-    task = hev_task_new (TASK_STACK_SIZE);
+    stack_size = hev_config_get_misc_task_stack_size ();
+    task = hev_task_new (stack_size);
     if (!task) {
         hev_socks5_session_destroy (HEV_SOCKS5_SESSION (tcp));
         return;
@@ -571,6 +573,7 @@ static HevSocks5SessionUDP *
 hev_socks5_udp_session_new (struct sockaddr *addr)
 {
     HevSocks5SessionUDP *udp;
+    int stack_size;
     HevTask *task;
 
     LOG_D ("socks5 udp session new");
@@ -579,7 +582,8 @@ hev_socks5_udp_session_new (struct sockaddr *addr)
     if (!udp)
         return NULL;
 
-    task = hev_task_new (TASK_STACK_SIZE);
+    stack_size = hev_config_get_misc_task_stack_size ();
+    task = hev_task_new (stack_size);
     if (!task) {
         hev_socks5_session_destroy (HEV_SOCKS5_SESSION (udp));
         return NULL;
