@@ -66,7 +66,77 @@ bin/hev-socks5-tproxy conf/main.yml
 
 ### Redirect rules
 
-#### Bypass ipset
+#### Type 1: NfTables
+
+##### Netfilter
+
+DON'T FORGOT TO ADD UPSTREAM ADDRESS TO BYPASS IPSET!!
+
+Or use nftables skuid/skgid match to exclude proxy process.
+
+```
+table inet mangle {
+    set byp4 {
+        typeof ip daddr
+        flags interval
+        elements = { 0.0.0.0/8, 10.0.0.0/8,
+                 127.0.0.0/8, 169.254.0.0/16,
+                 172.16.0.0/12, 192.0.0.0/24,
+                 192.0.2.0/24, 192.88.99.0/24,
+                 192.168.0.0/16, 198.18.0.0/15,
+                 198.51.100.0/24, 203.0.113.0/24,
+                 224.0.0.0/4, 240.0.0.0-255.255.255.255 }
+    }
+
+    set byp6 {
+        typeof ip6 daddr
+        flags interval
+        elements = { ::,
+                 ::1,
+                 ::ffff:0:0:0/96,
+                 64:ff9b::/96,
+                 100::/64,
+                 2001::/32,
+                 2001:20::/28,
+                 2001:db8::/32,
+                 2002::/16,
+                 fc00::/7,
+                 fe80::/10,
+                 ff00::-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff }
+    }
+
+    chain prerouting {
+        type filter hook prerouting priority mangle; policy accept;
+        ip daddr @byp4 return
+        ip6 daddr @byp6 return
+        tcp dport { 0-65535 } tproxy to :1088 return
+        udp dport { 0-65535 } tproxy to :1088 return
+    }
+
+    # Only for local mode
+    chain output {
+        type route hook output priority mangle; policy accept;
+        ip daddr @byp4 return
+        ip6 daddr @byp6 return
+        tcp dport { 0-65535 } meta mark set 0x00000440
+        udp dport { 0-65535 } meta mark set 0x00000440
+    }
+}
+```
+
+##### Routing
+
+```bash
+ip rule add fwmark 1088 table 100
+ip route add local default dev lo table 100
+
+ip -6 rule add fwmark 1088 table 100
+ip -6 route add local default dev lo table 100
+```
+
+#### Type 2: IPTables
+
+##### Bypass ipset
 
 DON'T FORGOT TO ADD UPSTREAM ADDRESS TO BYPASS IPSET!!
 
@@ -107,7 +177,7 @@ ipset add byp6 fe80::/10
 ipset add byp6 ff00::/8
 ```
 
-#### Netfilter and Routing
+##### Netfilter and Routing
 
 Gateway and Local modes
 
