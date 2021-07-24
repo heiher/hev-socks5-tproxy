@@ -109,8 +109,8 @@ table inet mangle {
         type filter hook prerouting priority mangle; policy accept;
         ip daddr @byp4 return
         ip6 daddr @byp6 return
-        tcp dport { 0-65535 } tproxy to :1088 meta mark set 0x00000440 return
-        udp dport { 0-65535 } tproxy to :1088 meta mark set 0x00000440 return
+        tcp dport { 0-65535 } tproxy to :1088 meta mark set 0x00000440 accept
+        udp dport { 0-65535 } tproxy to :1088 meta mark set 0x00000440 accept
     }
 
     # Only for local mode
