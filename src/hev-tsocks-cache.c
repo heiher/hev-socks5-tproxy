@@ -161,6 +161,7 @@ hev_tsocks_cache_add (HevTSock *ts)
             new = &((*new)->right);
     }
 
+    cached++;
     hev_list_add_tail (&lru, &ts->lnode);
     hev_rbtree_node_link (&ts->rnode, parent, new);
     hev_rbtree_insert_color (&cache, &ts->rnode);
@@ -169,6 +170,7 @@ hev_tsocks_cache_add (HevTSock *ts)
 static void
 hev_tsocks_cache_del (HevTSock *ts)
 {
+    cached--;
     hev_list_del (&lru, &ts->lnode);
     hev_rbtree_erase (&cache, &ts->rnode);
 }
