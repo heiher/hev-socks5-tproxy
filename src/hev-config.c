@@ -13,8 +13,11 @@
 #include "hev-logger.h"
 #include "hev-config.h"
 
-static char srv_address[256];
-static char srv_port[8];
+static HevConfigServer srv = {
+    .addr = NULL,
+    .login = NULL,
+    .password = NULL
+};
 static char tcp_address[256];
 static char tcp_port[8];
 static char udp_address[256];
@@ -27,6 +30,72 @@ static int connect_timeout = 5000;
 static int read_write_timeout = 60000;
 static int limit_nofile = -2;
 static int log_level = HEV_LOGGER_WARN;
+
+static int
+hev_config_parse_server (yaml_document_t *doc, yaml_node_t *base, const char *sec,
+                       HevConfigServer *srv)
+{
+    yaml_node_pair_t *pair;
+    const char *addr = NULL;
+    const char *port = NULL;
+    const char *login = NULL;
+    const char *password = NULL;
+
+    if (!base || YAML_MAPPING_NODE != base->type || !srv)
+        return -1;
+
+    for (pair = base->data.mapping.pairs.start;
+         pair < base->data.mapping.pairs.top; pair++) {
+        yaml_node_t *node;
+        const char *key, *value;
+
+        if (!pair->key || !pair->value)
+            break;
+
+        node = yaml_document_get_node (doc, pair->key);
+        if (!node || YAML_SCALAR_NODE != node->type)
+            break;
+        key = (const char *)node->data.scalar.value;
+
+        node = yaml_document_get_node (doc, pair->value);
+        if (!node || YAML_SCALAR_NODE != node->type)
+            break;
+        value = (const char *)node->data.scalar.value;
+
+        if (0 == strcmp (key, "port"))
+            port = value;
+        else if (0 == strcmp (key, "address"))
+            addr = value;
+        else if (0 == strcmp (key, "login"))
+            login = value;
+        else if (0 == strcmp (key, "password"))
+            password = value;
+    }
+
+    if (!port) {
+        fprintf (stderr, "Can't found %s.port!\n", sec);
+        return -1;
+    }
+
+    if (!addr) {
+        fprintf (stderr, "Can't found %s.address!\n", sec);
+        return -1;
+    }
+
+    if ((login && !password) || (!login && password)) {
+        fprintf (stderr, "Must be set both login and password %s!\n", sec);
+        return -1;
+    }
+
+    srv->addr = strdup(addr);
+    srv->port = strtoul(port, NULL, 10);
+    if (login && password) {
+        srv->login = strdup(login);
+        srv->password = strdup(password);
+    }
+
+    return 0;
+}
 
 static int
 hev_config_parse_addr (yaml_document_t *doc, yaml_node_t *base, const char *sec,
@@ -163,7 +232,7 @@ hev_config_parse_doc (yaml_document_t *doc)
         node = yaml_document_get_node (doc, pair->value);
 
         if (0 == strcmp (key, "socks5"))
-            res = hev_config_parse_addr (doc, node, key, srv_address, srv_port);
+            res = hev_config_parse_server (doc, node, key, &srv);
         else if (0 == strcmp (key, "tcp"))
             res = hev_config_parse_addr (doc, node, key, tcp_address, tcp_port);
         else if (0 == strcmp (key, "udp"))
@@ -217,12 +286,10 @@ hev_config_fini (void)
 {
 }
 
-const char *
-hev_config_get_socks5_address (int *port)
+const HevConfigServer *
+hev_config_get_socks5_server (void)
 {
-    *port = strtoul (srv_port, NULL, 10);
-
-    return srv_address;
+    return &srv;
 }
 
 const char *

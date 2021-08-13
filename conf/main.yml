@@ -6,6 +6,10 @@ socks5:
   port: 1080
   # Socks5 server address
   address: 127.0.0.1
+  # Socks5 server login
+# login: 'login'
+  # Socks5 server password
+# password: 'password'
 
 tcp:
   # TCP port
