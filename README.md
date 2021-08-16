@@ -36,6 +36,9 @@ main:
 socks5:
   port: 1080
   address: 127.0.0.1
+# username: 'username'
+  # Socks5 server password
+# password: 'password'
 
 tcp:
   port: 1088
