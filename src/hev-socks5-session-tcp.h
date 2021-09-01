@@ -14,29 +14,37 @@
 
 #include "hev-list.h"
 
+#include "hev-socks5-client-tcp.h"
+
 #include "hev-socks5-session.h"
 
 #define HEV_SOCKS5_SESSION_TCP(p) ((HevSocks5SessionTCP *)p)
 #define HEV_SOCKS5_SESSION_TCP_CLASS(p) ((HevSocks5SessionTCPClass *)p)
+#define HEV_SOCKS5_SESSION_TCP_TYPE (hev_socks5_session_tcp_class ())
 
 typedef struct _HevSocks5SessionTCP HevSocks5SessionTCP;
 typedef struct _HevSocks5SessionTCPClass HevSocks5SessionTCPClass;
 
 struct _HevSocks5SessionTCP
 {
-    HevSocks5Session base;
+    HevSocks5ClientTCP base;
 
+    HevTask *task;
     HevListNode node;
     int fd;
 };
 
 struct _HevSocks5SessionTCPClass
 {
-    HevSocks5SessionClass base;
+    HevSocks5ClientTCPClass base;
+
+    HevSocks5SessionIface session;
 };
 
-int hev_socks5_session_tcp_construct (HevSocks5SessionTCP *self);
-void hev_socks5_session_tcp_destruct (HevSocks5Session *base);
+HevObjectClass *hev_socks5_session_tcp_class (void);
+
+int hev_socks5_session_tcp_construct (HevSocks5SessionTCP *self,
+                                      struct sockaddr *addr, int fd);
 
 HevSocks5SessionTCP *hev_socks5_session_tcp_new (struct sockaddr *addr, int fd);
 

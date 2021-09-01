@@ -7,6 +7,7 @@
  ============================================================================
  */
 
+#include <string.h>
 #include <unistd.h>
 
 #include <hev-socks5-tcp.h>
@@ -17,6 +18,27 @@
 
 #include "hev-socks5-session-tcp.h"
 
+HevSocks5SessionTCP *
+hev_socks5_session_tcp_new (struct sockaddr *addr, int fd)
+{
+    HevSocks5SessionTCP *self;
+    int res;
+
+    self = hev_malloc0 (sizeof (HevSocks5SessionTCP));
+    if (!self)
+        return NULL;
+
+    res = hev_socks5_session_tcp_construct (self, addr, fd);
+    if (res < 0) {
+        hev_free (self);
+        return NULL;
+    }
+
+    LOG_D ("%p socks5 session tcp new", self);
+
+    return self;
+}
+
 static void
 hev_socks5_session_tcp_splice (HevSocks5Session *base)
 {
@@ -24,35 +46,46 @@ hev_socks5_session_tcp_splice (HevSocks5Session *base)
 
     LOG_D ("%p socks5 session tcp splice", self);
 
-    hev_socks5_tcp_splice (HEV_SOCKS5_TCP (base->client), self->fd);
+    hev_socks5_tcp_splice (HEV_SOCKS5_TCP (self), self->fd);
 }
 
-static HevSocks5SessionTCPClass _klass = {
-    {
-        .name = "HevSoscks5SessionTCP",
-        .splicer = hev_socks5_session_tcp_splice,
-        .finalizer = hev_socks5_session_tcp_destruct,
-    },
-};
+static HevTask *
+hev_socks5_session_tcp_get_task (HevSocks5Session *base)
+{
+    HevSocks5SessionTCP *self = HEV_SOCKS5_SESSION_TCP (base);
+
+    return self->task;
+}
+
+static void
+hev_socks5_session_tcp_set_task (HevSocks5Session *base, HevTask *task)
+{
+    HevSocks5SessionTCP *self = HEV_SOCKS5_SESSION_TCP (base);
+
+    self->task = task;
+}
 
 int
-hev_socks5_session_tcp_construct (HevSocks5SessionTCP *self)
+hev_socks5_session_tcp_construct (HevSocks5SessionTCP *self,
+                                  struct sockaddr *addr, int fd)
 {
     int res;
 
-    res = hev_socks5_session_construct (&self->base);
+    res = hev_socks5_client_tcp_construct_ip (&self->base, addr);
     if (res < 0)
         return -1;
 
     LOG_D ("%p socks5 session tcp construct", self);
 
-    HEV_SOCKS5_SESSION (self)->klass = HEV_SOCKS5_SESSION_CLASS (&_klass);
+    HEV_OBJECT (self)->klass = HEV_SOCKS5_SESSION_TCP_TYPE;
+
+    self->fd = fd;
 
     return 0;
 }
 
-void
-hev_socks5_session_tcp_destruct (HevSocks5Session *base)
+static void
+hev_socks5_session_tcp_destruct (HevObject *base)
 {
     HevSocks5SessionTCP *self = HEV_SOCKS5_SESSION_TCP (base);
 
@@ -61,36 +94,40 @@ hev_socks5_session_tcp_destruct (HevSocks5Session *base)
     if (self->fd >= 0)
         close (self->fd);
 
-    hev_socks5_session_destruct (base);
+    HEV_SOCKS5_CLIENT_TCP_TYPE->finalizer (base);
 }
 
-HevSocks5SessionTCP *
-hev_socks5_session_tcp_new (struct sockaddr *addr, int fd)
+static void *
+hev_socks5_session_tcp_iface (HevObject *base, void *type)
 {
-    HevSocks5SessionTCP *self;
-    HevSocks5ClientTCP *tcp;
-    int res;
+    HevSocks5SessionTCPClass *klass = HEV_OBJECT_GET_CLASS (base);
 
-    self = hev_malloc0 (sizeof (HevSocks5SessionTCP));
-    if (!self)
-        return NULL;
+    return &klass->session;
+}
 
-    LOG_D ("%p socks5 session tcp new", self);
+HevObjectClass *
+hev_socks5_session_tcp_class (void)
+{
+    static HevSocks5SessionTCPClass klass;
+    HevSocks5SessionTCPClass *kptr = &klass;
+    HevObjectClass *okptr = HEV_OBJECT_CLASS (kptr);
 
-    res = hev_socks5_session_tcp_construct (self);
-    if (res < 0) {
-        hev_free (self);
-        return NULL;
+    if (!okptr->name) {
+        HevSocks5SessionIface *siptr;
+        void *ptr;
+
+        ptr = HEV_SOCKS5_CLIENT_TCP_TYPE;
+        memcpy (kptr, ptr, sizeof (HevSocks5ClientTCPClass));
+
+        okptr->name = "HevSocks5SessionTCP";
+        okptr->finalizer = hev_socks5_session_tcp_destruct;
+        okptr->iface = hev_socks5_session_tcp_iface;
+
+        siptr = &kptr->session;
+        siptr->splicer = hev_socks5_session_tcp_splice;
+        siptr->get_task = hev_socks5_session_tcp_get_task;
+        siptr->set_task = hev_socks5_session_tcp_set_task;
     }
 
-    tcp = hev_socks5_client_tcp_new_ip (addr);
-    if (!tcp) {
-        hev_free (self);
-        return NULL;
-    }
-
-    self->fd = fd;
-    self->base.client = HEV_SOCKS5_CLIENT (tcp);
-
-    return self;
+    return okptr;
 }

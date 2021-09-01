@@ -15,18 +15,22 @@
 #include "hev-list.h"
 #include "hev-rbtree.h"
 
+#include "hev-socks5-client-udp.h"
+
 #include "hev-socks5-session.h"
 
 #define HEV_SOCKS5_SESSION_UDP(p) ((HevSocks5SessionUDP *)p)
 #define HEV_SOCKS5_SESSION_UDP_CLASS(p) ((HevSocks5SessionUDPClass *)p)
+#define HEV_SOCKS5_SESSION_UDP_TYPE (hev_socks5_session_udp_class ())
 
 typedef struct _HevSocks5SessionUDP HevSocks5SessionUDP;
 typedef struct _HevSocks5SessionUDPClass HevSocks5SessionUDPClass;
 
 struct _HevSocks5SessionUDP
 {
-    HevSocks5Session base;
+    HevSocks5ClientUDP base;
 
+    HevTask *task;
     HevList frame_list;
     HevRBTreeNode node;
     struct sockaddr_in6 addr;
@@ -35,11 +39,15 @@ struct _HevSocks5SessionUDP
 
 struct _HevSocks5SessionUDPClass
 {
-    HevSocks5SessionClass base;
+    HevSocks5ClientUDPClass base;
+
+    HevSocks5SessionIface session;
 };
 
-int hev_socks5_session_udp_construct (HevSocks5SessionUDP *self);
-void hev_socks5_session_udp_destruct (HevSocks5Session *base);
+HevObjectClass *hev_socks5_session_udp_class (void);
+
+int hev_socks5_session_udp_construct (HevSocks5SessionUDP *self,
+                                      struct sockaddr *addr);
 
 HevSocks5SessionUDP *hev_socks5_session_udp_new (struct sockaddr *addr);
 
