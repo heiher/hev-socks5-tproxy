@@ -1,13 +1,13 @@
-# HevSocks5Tproxy
+# HevSocks5TProxy
 
 [![status](https://gitlab.com/hev/hev-socks5-tproxy/badges/master/pipeline.svg)](https://gitlab.com/hev/hev-socks5-tproxy/commits/master)
 
-HevSocks5Tproxy is a simple, lightweight transparent proxy for Linux.
+HevSocks5TProxy is a simple, lightweight transparent proxy for Linux.
 
 **Features**
 * IPv4/IPv6. (dual stack)
 * Redirect TCP connections.
-* Redirect UDP packets. (UDP over TCP)
+* Redirect UDP packets. (UDP over TCP see [server](https://gitlab.com/hev/hev-socks5-server))
 
 ## How to Build
 
@@ -36,6 +36,7 @@ main:
 socks5:
   port: 1080
   address: 127.0.0.1
+  # Socks5 server username
 # username: 'username'
   # Socks5 server password
 # password: 'password'
@@ -212,8 +213,10 @@ ip6tables -t mangle -A OUTPUT -p tcp -j MARK --set-mark 1088
 ip6tables -t mangle -A OUTPUT -p udp -j MARK --set-mark 1088
 ```
 
-## Authors
-* **Heiher** - https://hev.cc
+## Contributors
+* **hev** - https://hev.cc
+* **pexcn** - <i@pexcn.me>
+* **spider84** - https://github.com/spider84
 
 ## License
 LGPL
