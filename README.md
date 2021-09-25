@@ -32,14 +32,13 @@ ndk-build
 ### Config
 
 ```yaml
-main:
 socks5:
   port: 1080
   address: 127.0.0.1
   # Socks5 server username
-# username: 'username'
+  username: 'username'
   # Socks5 server password
-# password: 'password'
+  password: 'password'
 
 tcp:
   port: 1088
