@@ -28,6 +28,9 @@ const char *hev_config_get_tcp_address (void);
 const char *hev_config_get_tcp_port (void);
 const char *hev_config_get_udp_address (void);
 const char *hev_config_get_udp_port (void);
+const char *hev_config_get_dns_upstream (void);
+const char *hev_config_get_dns_address (void);
+const char *hev_config_get_dns_port (void);
 
 int hev_config_get_misc_task_stack_size (void);
 int hev_config_get_misc_connect_timeout (void);

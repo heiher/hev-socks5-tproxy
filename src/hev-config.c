@@ -18,6 +18,9 @@ static char tcp_address[256];
 static char tcp_port[8];
 static char udp_address[256];
 static char udp_port[8];
+static char dns_upstream[256];
+static char dns_address[256];
+static char dns_port[8];
 
 static char log_file[1024];
 static char pid_file[1024];
@@ -149,6 +152,65 @@ hev_config_parse_addr (yaml_document_t *doc, yaml_node_t *base, const char *sec,
 }
 
 static int
+hev_config_parse_dns_addr (yaml_document_t *doc, yaml_node_t *base,
+                           const char *sec)
+{
+    yaml_node_pair_t *pair;
+    const char *addr = NULL;
+    const char *port = NULL;
+    const char *upstream = NULL;
+
+    if (!base || YAML_MAPPING_NODE != base->type)
+        return -1;
+
+    for (pair = base->data.mapping.pairs.start;
+         pair < base->data.mapping.pairs.top; pair++) {
+        yaml_node_t *node;
+        const char *key, *value;
+
+        if (!pair->key || !pair->value)
+            break;
+
+        node = yaml_document_get_node (doc, pair->key);
+        if (!node || YAML_SCALAR_NODE != node->type)
+            break;
+        key = (const char *)node->data.scalar.value;
+
+        node = yaml_document_get_node (doc, pair->value);
+        if (!node || YAML_SCALAR_NODE != node->type)
+            break;
+        value = (const char *)node->data.scalar.value;
+
+        if (0 == strcmp (key, "port"))
+            port = value;
+        else if (0 == strcmp (key, "address"))
+            addr = value;
+        else if (0 == strcmp (key, "upstream"))
+            upstream = value;
+    }
+
+    if (!port) {
+        fprintf (stderr, "Can't found %s.port!\n", sec);
+        return -1;
+    }
+
+    if (!addr) {
+        fprintf (stderr, "Can't found %s.address!\n", sec);
+        return -1;
+    }
+
+    if (!upstream) {
+        fprintf (stderr, "Can't found %s.upstream!\n", sec);
+        return -1;
+    }
+
+    strncpy (dns_upstream, upstream, 256 - 1);
+    strncpy (dns_address, addr, 256 - 1);
+    strncpy (dns_port, port, 8 - 1);
+    return 0;
+}
+
+static int
 hev_config_parse_log_level (const char *value)
 {
     if (0 == strcmp (value, "debug"))
@@ -238,6 +300,8 @@ hev_config_parse_doc (yaml_document_t *doc)
             res = hev_config_parse_addr (doc, node, key, tcp_address, tcp_port);
         else if (0 == strcmp (key, "udp"))
             res = hev_config_parse_addr (doc, node, key, udp_address, udp_port);
+        else if (0 == strcmp (key, "dns"))
+            res = hev_config_parse_dns_addr (doc, node, key);
         else if (0 == strcmp (key, "misc"))
             res = hev_config_parse_misc (doc, node);
 
@@ -315,6 +379,24 @@ const char *
 hev_config_get_udp_port (void)
 {
     return udp_port;
+}
+
+const char *
+hev_config_get_dns_upstream (void)
+{
+    return dns_upstream;
+}
+
+const char *
+hev_config_get_dns_address (void)
+{
+    return dns_address;
+}
+
+const char *
+hev_config_get_dns_port (void)
+{
+    return dns_port;
 }
 
 int

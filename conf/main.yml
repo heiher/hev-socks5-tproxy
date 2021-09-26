@@ -22,6 +22,16 @@ udp:
   # UDP address
   address: '::'
 
+# Redirect DNS to local server on gateway
+#   [address]:port <-> [upstream]:53 (dnsmasq)
+dns:
+  # DNS port
+  port: 1053
+  # DNS address
+  address: '::'
+  # DNS upstream
+  upstream: 127.0.0.1
+
 #misc:
    # task stack size (bytes)
 #  task-stack-size: 8192
