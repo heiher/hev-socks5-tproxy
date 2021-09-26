@@ -203,12 +203,15 @@ hev_socks5_session_udp_splice (HevSocks5Session *base)
     }
 }
 
-static HevTask *
-hev_socks5_session_udp_get_task (HevSocks5Session *base)
+static void
+hev_socks5_session_udp_terminate (HevSocks5Session *base)
 {
     HevSocks5SessionUDP *self = HEV_SOCKS5_SESSION_UDP (base);
 
-    return self->task;
+    LOG_D ("%p socks5 session udp terminate", self);
+
+    hev_socks5_set_timeout (HEV_SOCKS5 (self), 0);
+    hev_task_wakeup (self->task);
 }
 
 static void
@@ -276,6 +279,7 @@ hev_socks5_session_udp_class (void)
 
     if (!okptr->name) {
         HevSocks5SessionIface *siptr;
+        HevTProxySessionIface *tiptr;
         void *ptr;
 
         ptr = HEV_SOCKS5_CLIENT_UDP_TYPE;
@@ -286,9 +290,12 @@ hev_socks5_session_udp_class (void)
         okptr->iface = hev_socks5_session_udp_iface;
 
         siptr = &kptr->session;
+        memcpy (siptr, HEV_SOCKS5_SESSION_TYPE, sizeof (HevSocks5SessionIface));
         siptr->splicer = hev_socks5_session_udp_splice;
-        siptr->get_task = hev_socks5_session_udp_get_task;
-        siptr->set_task = hev_socks5_session_udp_set_task;
+
+        tiptr = &kptr->session.base;
+        tiptr->set_task = hev_socks5_session_udp_set_task;
+        tiptr->terminator = hev_socks5_session_udp_terminate;
     }
 
     return okptr;
