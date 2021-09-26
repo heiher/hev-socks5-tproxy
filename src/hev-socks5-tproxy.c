@@ -12,7 +12,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
-#include <arpa/inet.h>
 #include <sys/ioctl.h>
 #include <sys/eventfd.h>
 
@@ -32,22 +31,26 @@
 #include "hev-tsocks-cache.h"
 #include "hev-socks5-session-tcp.h"
 #include "hev-socks5-session-udp.h"
+#include "hev-tproxy-session-dns.h"
 
 #include "hev-socks5-tproxy.h"
 
 static void sigint_handler (int signum);
 static void hev_socks5_tcp_task_entry (void *data);
 static void hev_socks5_udp_task_entry (void *data);
+static void hev_socks5_dns_task_entry (void *data);
 static void hev_socks5_event_task_entry (void *data);
 
 static int quit;
 static int fd_event;
 
 static HevList tcp_set;
+static HevList dns_set;
 static HevRBTree udp_set;
 
 static HevTask *task_tcp;
 static HevTask *task_udp;
+static HevTask *task_dns;
 static HevTask *task_event;
 
 int
@@ -93,6 +96,12 @@ hev_socks5_tproxy_init (void)
         goto free;
     }
 
+    task_dns = hev_task_new (-1);
+    if (!task_dns) {
+        LOG_E ("socks5 tproxy task dns");
+        goto free;
+    }
+
     return 0;
 
 free:
@@ -112,6 +121,8 @@ hev_socks5_tproxy_fini (void)
         hev_task_unref (task_tcp);
     if (task_udp)
         hev_task_unref (task_udp);
+    if (task_dns)
+        hev_task_unref (task_dns);
 
     hev_tsocks_cache_fini ();
     hev_task_system_fini ();
@@ -129,6 +140,9 @@ hev_socks5_tproxy_run (void)
 
     if (task_udp)
         hev_task_run (task_udp, hev_socks5_udp_task_entry, NULL);
+
+    if (task_dns)
+        hev_task_run (task_dns, hev_socks5_dns_task_entry, NULL);
 
     hev_task_system_run ();
 }
@@ -252,19 +266,14 @@ exit:
 }
 
 static int
-hev_socks5_tproxy_udp_socket (void)
+hev_socks5_tproxy_udp_socket (const char *addr, const char *port)
 {
     struct sockaddr_in6 saddr;
-    const char *addr;
-    const char *port;
     int one = 1;
     int res;
     int fd;
 
     LOG_D ("socks5 tproxy udp socket");
-
-    addr = hev_config_get_udp_address ();
-    port = hev_config_get_udp_port ();
 
     res = hev_socks5_tproxy_sockaddr (addr, port, SOCK_DGRAM, &saddr);
     if (res < 0) {
@@ -352,6 +361,8 @@ hev_socks5_event_task_entry (void *data)
         hev_task_wakeup (task_tcp);
     if (task_udp)
         hev_task_wakeup (task_udp);
+    if (task_dns)
+        hev_task_wakeup (task_dns);
 
     close (fd_event);
     fd_event = -1;
@@ -363,7 +374,7 @@ hev_socks5_tcp_session_task_entry (void *data)
 {
     HevSocks5SessionTCP *tcp = data;
 
-    hev_socks5_session_run (HEV_SOCKS5_SESSION (tcp));
+    hev_tproxy_session_run (HEV_TPROXY_SESSION (tcp));
 
     hev_list_del (&tcp_set, &tcp->node);
     hev_object_unref (HEV_OBJECT (tcp));
@@ -402,7 +413,7 @@ hev_socks5_tcp_session_new (int fd)
         return;
     }
 
-    hev_socks5_session_set_task (HEV_SOCKS5_SESSION (tcp), task);
+    hev_tproxy_session_set_task (HEV_TPROXY_SESSION (tcp), task);
     hev_list_add_tail (&tcp_set, &tcp->node);
     hev_task_run (task, hev_socks5_tcp_session_task_entry, tcp);
 }
@@ -440,7 +451,7 @@ hev_socks5_tcp_task_entry (void *data)
         HevSocks5SessionTCP *tcp;
 
         tcp = container_of (node, HevSocks5SessionTCP, node);
-        hev_socks5_session_terminate (HEV_SOCKS5_SESSION (tcp));
+        hev_tproxy_session_terminate (HEV_TPROXY_SESSION (tcp));
     }
 
     close (fd);
@@ -563,7 +574,7 @@ hev_socks5_udp_session_task_entry (void *data)
 {
     HevSocks5SessionUDP *udp = data;
 
-    hev_socks5_session_run (HEV_SOCKS5_SESSION (udp));
+    hev_tproxy_session_run (HEV_TPROXY_SESSION (udp));
 
     hev_socks5_udp_session_del (udp);
     hev_object_unref (HEV_OBJECT (udp));
@@ -589,7 +600,7 @@ hev_socks5_udp_session_new (struct sockaddr *addr)
         return NULL;
     }
 
-    hev_socks5_session_set_task (HEV_SOCKS5_SESSION (udp), task);
+    hev_tproxy_session_set_task (HEV_TPROXY_SESSION (udp), task);
     hev_socks5_udp_session_add (udp);
     hev_task_run (task, hev_socks5_udp_session_task_entry, udp);
 
@@ -619,11 +630,16 @@ static void
 hev_socks5_udp_task_entry (void *data)
 {
     HevRBTreeNode *node;
+    const char *addr;
+    const char *port;
     int fd;
 
     LOG_D ("socks5 udp task run");
 
-    fd = hev_socks5_tproxy_udp_socket ();
+    addr = hev_config_get_udp_address ();
+    port = hev_config_get_udp_port ();
+
+    fd = hev_socks5_tproxy_udp_socket (addr, port);
     if (fd < 0)
         goto exit;
 
@@ -661,10 +677,85 @@ hev_socks5_udp_task_entry (void *data)
         HevSocks5SessionUDP *udp;
 
         udp = container_of (node, HevSocks5SessionUDP, node);
-        hev_socks5_session_terminate (HEV_SOCKS5_SESSION (udp));
+        hev_tproxy_session_terminate (HEV_TPROXY_SESSION (udp));
     }
 
     close (fd);
 exit:
     task_udp = NULL;
+}
+
+static void
+hev_socks5_dns_session_task_entry (void *data)
+{
+    HevTProxySessionDNS *dns = data;
+
+    hev_tproxy_session_run (HEV_TPROXY_SESSION (dns));
+
+    hev_list_del (&dns_set, &dns->node);
+    hev_object_unref (HEV_OBJECT (dns));
+}
+
+static void
+hev_socks5_dns_task_entry (void *data)
+{
+    HevListNode *node;
+    const char *addr;
+    const char *port;
+    int stack_size;
+    int fd;
+
+    LOG_D ("socks5 dns task run");
+
+    addr = hev_config_get_dns_address ();
+    port = hev_config_get_dns_port ();
+
+    fd = hev_socks5_tproxy_udp_socket (addr, port);
+    if (fd < 0)
+        goto exit;
+
+    hev_task_add_fd (hev_task_self (), fd, POLLIN);
+    stack_size = hev_config_get_misc_task_stack_size ();
+
+    for (;;) {
+        HevTProxySessionDNS *dns;
+        struct sockaddr *sap;
+        struct sockaddr *dap;
+        HevTask *task;
+        void *buffer;
+        int res;
+
+        dns = hev_tproxy_session_dns_new ();
+        sap = hev_tproxy_session_dns_get_saddr (dns);
+        dap = hev_tproxy_session_dns_get_daddr (dns);
+        buffer = hev_tproxy_session_dns_get_buffer (dns);
+
+        res = hev_socks5_udp_recvmsg (fd, sap, dap, buffer, UDP_BUF_SIZE);
+        if (res == -1 || res == 0) {
+            LOG_W ("socks5 dns recvmsg");
+            hev_object_unref (HEV_OBJECT (dns));
+            continue;
+        } else if (res <= 0) {
+            hev_object_unref (HEV_OBJECT (dns));
+            break;
+        }
+
+        task = hev_task_new (stack_size);
+        hev_task_run (task, hev_socks5_dns_session_task_entry, dns);
+        hev_list_add_tail (&dns_set, &dns->node);
+        hev_tproxy_session_dns_set_size (dns, res);
+        hev_tproxy_session_set_task (HEV_TPROXY_SESSION (dns), task);
+    }
+
+    node = hev_list_first (&dns_set);
+    for (; node; node = hev_list_node_next (node)) {
+        HevTProxySessionDNS *dns;
+
+        dns = container_of (node, HevTProxySessionDNS, node);
+        hev_tproxy_session_terminate (HEV_TPROXY_SESSION (dns));
+    }
+
+    close (fd);
+exit:
+    task_dns = NULL;
 }

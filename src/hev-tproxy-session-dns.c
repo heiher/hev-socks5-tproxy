@@ -82,7 +82,7 @@ hev_tproxy_session_dns_new (void)
         return NULL;
     }
 
-    LOG_D ("%p tproxy session dns new", self);
+    LOG_D ("tproxy session dns new");
 
     return self;
 }
@@ -145,7 +145,7 @@ hev_tproxy_session_dns_run (HevTProxySession *base)
     int tfd;
     int fd;
 
-    LOG_D ("%p tproxy session dns run", base);
+    LOG_D ("tproxy session dns run");
 
     fd = hev_task_io_socket_socket (AF_INET6, SOCK_DGRAM, 0);
     if (fd < 0)
@@ -189,7 +189,7 @@ hev_tproxy_session_dns_terminate (HevTProxySession *base)
 {
     HevTProxySessionDNS *self = HEV_TPROXY_SESSION_DNS (base);
 
-    LOG_D ("%p tproxy session dns terminate", self);
+    LOG_D ("tproxy session dns terminate");
 
     self->timeout = 0;
     hev_task_wakeup (self->task);
@@ -212,7 +212,7 @@ hev_tproxy_session_dns_construct (HevTProxySessionDNS *self)
     if (res < 0)
         return -1;
 
-    LOG_D ("%p tproxy session dns construct", self);
+    LOG_D ("tproxy session dns construct");
 
     HEV_OBJECT (self)->klass = HEV_TPROXY_SESSION_DNS_TYPE;
 
@@ -224,9 +224,7 @@ hev_tproxy_session_dns_construct (HevTProxySessionDNS *self)
 void
 hev_tproxy_session_dns_destruct (HevObject *base)
 {
-    HevTProxySessionDNS *self = HEV_TPROXY_SESSION_DNS (base);
-
-    LOG_D ("%p tproxy session dns destruct", self);
+    LOG_D ("tproxy session dns destruct");
 
     HEV_OBJECT_TYPE->finalizer (base);
     hev_free (base);
