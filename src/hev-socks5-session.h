@@ -10,7 +10,7 @@
 #ifndef __HEV_SOCKS5_SESSION_H__
 #define __HEV_SOCKS5_SESSION_H__
 
-#include <hev-task.h>
+#include "hev-tproxy-session.h"
 
 #define HEV_SOCKS5_SESSION(p) ((HevSocks5Session *)p)
 #define HEV_SOCKS5_SESSION_IFACE(p) ((HevSocks5SessionIface *)p)
@@ -21,16 +21,11 @@ typedef struct _HevSocks5SessionIface HevSocks5SessionIface;
 
 struct _HevSocks5SessionIface
 {
+    HevTProxySessionIface base;
+
     void (*splicer) (HevSocks5Session *self);
-    HevTask *(*get_task) (HevSocks5Session *self);
-    void (*set_task) (HevSocks5Session *self, HevTask *task);
 };
 
 void *hev_socks5_session_iface (void);
-
-void hev_socks5_session_run (HevSocks5Session *self);
-void hev_socks5_session_terminate (HevSocks5Session *self);
-
-void hev_socks5_session_set_task (HevSocks5Session *self, HevTask *task);
 
 #endif /* __HEV_SOCKS5_SESSION_H__ */

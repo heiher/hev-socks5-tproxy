@@ -16,8 +16,8 @@
 
 #include "hev-socks5-session.h"
 
-void
-hev_socks5_session_run (HevSocks5Session *self)
+static void
+hev_socks5_session_run (HevTProxySession *base)
 {
     HevSocks5SessionIface *iface;
     HevConfigServer *srv;
@@ -25,63 +25,46 @@ hev_socks5_session_run (HevSocks5Session *self)
     int connect_timeout;
     int res;
 
-    LOG_D ("%p socks5 session run", self);
+    LOG_D ("%p socks5 session run", base);
 
     srv = hev_config_get_socks5_server ();
     connect_timeout = hev_config_get_misc_connect_timeout ();
     read_write_timeout = hev_config_get_misc_read_write_timeout ();
 
-    hev_socks5_set_timeout (HEV_SOCKS5 (self), connect_timeout);
+    hev_socks5_set_timeout (HEV_SOCKS5 (base), connect_timeout);
 
-    res = hev_socks5_client_connect (HEV_SOCKS5_CLIENT (self), srv->addr,
+    res = hev_socks5_client_connect (HEV_SOCKS5_CLIENT (base), srv->addr,
                                      srv->port);
     if (res < 0) {
-        LOG_E ("%p socks5 session connect", self);
+        LOG_E ("%p socks5 session connect", base);
         return;
     }
 
-    hev_socks5_set_timeout (HEV_SOCKS5 (self), read_write_timeout);
+    hev_socks5_set_timeout (HEV_SOCKS5 (base), read_write_timeout);
 
     if (srv->user && srv->pass) {
-        hev_socks5_set_auth_user_pass (HEV_SOCKS5 (self), srv->user, srv->pass);
-        LOG_D ("%p socks5 client auth %s:%s", self, srv->user, srv->pass);
+        hev_socks5_set_auth_user_pass (HEV_SOCKS5 (base), srv->user, srv->pass);
+        LOG_D ("%p socks5 client auth %s:%s", base, srv->user, srv->pass);
     }
 
-    res = hev_socks5_client_handshake (HEV_SOCKS5_CLIENT (self));
+    res = hev_socks5_client_handshake (HEV_SOCKS5_CLIENT (base));
     if (res < 0) {
-        LOG_E ("%p socks5 session handshake", self);
+        LOG_E ("%p socks5 session handshake", base);
         return;
     }
 
-    iface = HEV_OBJECT_GET_IFACE (self, HEV_SOCKS5_SESSION_TYPE);
-    iface->splicer (self);
-}
-
-void
-hev_socks5_session_terminate (HevSocks5Session *self)
-{
-    HevSocks5SessionIface *iface;
-
-    LOG_D ("%p socks5 session terminate", self);
-
-    iface = HEV_OBJECT_GET_IFACE (self, HEV_SOCKS5_SESSION_TYPE);
-    hev_socks5_set_timeout (HEV_SOCKS5 (self), 0);
-    hev_task_wakeup (iface->get_task (self));
-}
-
-void
-hev_socks5_session_set_task (HevSocks5Session *self, HevTask *task)
-{
-    HevSocks5SessionIface *iface;
-
-    iface = HEV_OBJECT_GET_IFACE (self, HEV_SOCKS5_SESSION_TYPE);
-    iface->set_task (self, task);
+    iface = HEV_OBJECT_GET_IFACE (base, HEV_SOCKS5_SESSION_TYPE);
+    iface->splicer (HEV_SOCKS5_SESSION (base));
 }
 
 void *
 hev_socks5_session_iface (void)
 {
-    static char type;
+    static HevSocks5SessionIface type = {
+        {
+            .runner = hev_socks5_session_run,
+        },
+    };
 
     return &type;
 }
