@@ -48,6 +48,16 @@ udp:
   port: 1088
   address: '::'
 
+# Redirect DNS to local server on gateway
+#   [address]:port <-> [upstream]:53 (dnsmasq)
+dns:
+  # DNS port
+  port: 1053
+  # DNS address
+  address: '::'
+  # DNS upstream
+  upstream: 127.0.0.1
+
 #misc:
 #  task-stack-size: 8192 # task stack size (bytes)
 #  connect-timeout: 5000 # connect timeout (ms)
