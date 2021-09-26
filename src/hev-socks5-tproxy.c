@@ -642,11 +642,11 @@ hev_socks5_udp_task_entry (void *data)
         dap = (struct sockaddr *)&daddr;
 
         res = hev_socks5_udp_recvmsg (fd, sap, dap, buf, UDP_BUF_SIZE);
-        if (res == -1) {
+        if (res == -1 || res == 0) {
             LOG_W ("socks5 udp recvmsg");
             hev_free (buf);
             continue;
-        } else if (res <= 0) {
+        } else if (res < 0) {
             hev_free (buf);
             break;
         }
