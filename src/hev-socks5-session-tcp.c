@@ -49,12 +49,15 @@ hev_socks5_session_tcp_splice (HevSocks5Session *base)
     hev_socks5_tcp_splice (HEV_SOCKS5_TCP (self), self->fd);
 }
 
-static HevTask *
-hev_socks5_session_tcp_get_task (HevSocks5Session *base)
+static void
+hev_socks5_session_tcp_terminate (HevSocks5Session *base)
 {
     HevSocks5SessionTCP *self = HEV_SOCKS5_SESSION_TCP (base);
 
-    return self->task;
+    LOG_D ("%p socks5 session tcp terminate", self);
+
+    hev_socks5_set_timeout (HEV_SOCKS5 (self), 0);
+    hev_task_wakeup (self->task);
 }
 
 static void
@@ -114,6 +117,7 @@ hev_socks5_session_tcp_class (void)
 
     if (!okptr->name) {
         HevSocks5SessionIface *siptr;
+        HevTProxySessionIface *tiptr;
         void *ptr;
 
         ptr = HEV_SOCKS5_CLIENT_TCP_TYPE;
@@ -124,9 +128,12 @@ hev_socks5_session_tcp_class (void)
         okptr->iface = hev_socks5_session_tcp_iface;
 
         siptr = &kptr->session;
+        memcpy (siptr, HEV_SOCKS5_SESSION_TYPE, sizeof (HevSocks5SessionIface));
         siptr->splicer = hev_socks5_session_tcp_splice;
-        siptr->get_task = hev_socks5_session_tcp_get_task;
-        siptr->set_task = hev_socks5_session_tcp_set_task;
+
+        tiptr = &kptr->session.base;
+        tiptr->set_task = hev_socks5_session_tcp_set_task;
+        tiptr->terminator = hev_socks5_session_tcp_terminate;
     }
 
     return okptr;
