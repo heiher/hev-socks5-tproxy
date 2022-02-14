@@ -7,7 +7,7 @@ HevSocks5TProxy is a simple, lightweight transparent proxy for Linux.
 **Features**
 * IPv4/IPv6. (dual stack)
 * Redirect TCP connections.
-* Redirect UDP packets. (UDP over TCP see [server](https://gitlab.com/hev/hev-socks5-server))
+* Redirect UDP packets. (UDP over TCP, works with [hev-socks5-server](https://gitlab.com/hev/hev-socks5-server) only)
 
 ```
                             +---------------+
