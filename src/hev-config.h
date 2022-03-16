@@ -33,6 +33,7 @@ const char *hev_config_get_dns_address (void);
 const char *hev_config_get_dns_port (void);
 
 int hev_config_get_misc_task_stack_size (void);
+int hev_config_get_misc_udp_recv_buffer_size (void);
 int hev_config_get_misc_connect_timeout (void);
 int hev_config_get_misc_read_write_timeout (void);
 int hev_config_get_misc_limit_nofile (void);

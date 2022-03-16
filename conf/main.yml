@@ -35,6 +35,8 @@ dns:
 #misc:
    # task stack size (bytes)
 #  task-stack-size: 8192
+   # udp recv buffer size (bytes)
+#  udp-recv-buffer-size: 1048576
    # connect timeout (ms)
 #  connect-timeout: 5000
    # read-write timeout (ms)

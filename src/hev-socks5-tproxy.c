@@ -317,6 +317,11 @@ hev_socks5_tproxy_udp_socket (const char *addr, const char *port)
         goto close;
     }
 
+    res = hev_config_get_misc_udp_recv_buffer_size ();
+    res = setsockopt (fd, SOL_SOCKET, SO_RCVBUF, &res, sizeof (res));
+    if (res < 0)
+        LOG_W ("socks5 tproxy udp socket rcvbuf");
+
     res = bind (fd, (struct sockaddr *)&saddr, sizeof (saddr));
     if (res < 0) {
         LOG_E ("socks5 tproxy udp socket bind");
