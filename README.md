@@ -254,4 +254,4 @@ ip6tables -t mangle -A OUTPUT -p udp -j MARK --set-mark 1088
 * **spider84** - https://github.com/spider84
 
 ## License
-LGPL
+GPLv3
