@@ -250,6 +250,7 @@ ip6tables -t mangle -A OUTPUT -p udp -j MARK --set-mark 1088
 
 ## Contributors
 * **hev** - https://hev.cc
+* **ihipop** - https://ihipop.com
 * **pexcn** - <i@pexcn.me>
 * **spider84** - https://github.com/spider84
 
