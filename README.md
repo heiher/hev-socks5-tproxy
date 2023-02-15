@@ -7,7 +7,7 @@ HevSocks5TProxy is a simple, lightweight transparent proxy for Linux.
 **Features**
 * IPv4/IPv6. (dual stack)
 * Redirect TCP connections.
-* Redirect UDP packets. (UDP over TCP, works with [hev-socks5-server](https://gitlab.com/hev/hev-socks5-server) only)
+* Redirect UDP packets. (Fullcone NAT, UDP in UDP/TCP)
 
 ```
                 +---------------+      +---------------+
@@ -39,14 +39,16 @@ ipset/tproxy    |  tcp/udp  +---------------+   tproxy |
 
 ## How to Build
 
-**Linux**:
+### Linux
+
 ```bash
 git clone --recursive git://github.com/heiher/hev-socks5-tproxy
 cd hev-socks5-tproxy
 make
 ```
 
-**Android**:
+### Android
+
 ```bash
 mkdir hev-socks5-tproxy
 cd hev-socks5-tproxy
@@ -63,6 +65,8 @@ ndk-build
 socks5:
   port: 1080
   address: 127.0.0.1
+  # Socks5 UDP relay mode (tcp|udp)
+  udp: 'tcp'
   # Socks5 server username
   username: 'username'
   # Socks5 server password
@@ -249,10 +253,12 @@ ip6tables -t mangle -A OUTPUT -p udp -j MARK --set-mark 1088
 ```
 
 ## Contributors
+
 * **hev** - https://hev.cc
 * **ihipop** - https://ihipop.com
 * **pexcn** - <i@pexcn.me>
 * **spider84** - https://github.com/spider84
 
 ## License
+
 GPLv3
