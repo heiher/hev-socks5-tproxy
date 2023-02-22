@@ -73,7 +73,7 @@ hev_socks5_session_udp_fwd_f (HevSocks5SessionUDP *self)
     udp = HEV_SOCKS5_UDP (self);
     res = hev_socks5_udp_sendto (udp, frame->data, frame->len, addr);
     if (res <= 0) {
-        LOG_E ("%p socks5 session udp fwd f send", self);
+        LOG_D ("%p socks5 session udp fwd f send", self);
         res = -1;
     }
 
@@ -101,7 +101,7 @@ hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self)
     udp = HEV_SOCKS5_UDP (self);
     fd = HEV_SOCKS5 (udp)->fd;
     if (fd < 0) {
-        LOG_E ("%p socks5 session udp fd", self);
+        LOG_D ("%p socks5 session udp fd", self);
         return -1;
     }
 
@@ -111,13 +111,13 @@ hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self)
 
     res = hev_socks5_udp_recvfrom (udp, buf, sizeof (buf), saddr);
     if (res <= 0) {
-        LOG_E ("%p socks5 session udp fwd b recv", self);
+        LOG_D ("%p socks5 session udp fwd b recv", self);
         return -1;
     }
 
     fd = hev_tsocks_cache_get (saddr);
     if (fd < 0) {
-        LOG_E ("%p socks5 session udp tsocks get", self);
+        LOG_D ("%p socks5 session udp tsocks get", self);
         return -1;
     }
 
@@ -125,7 +125,7 @@ hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self)
     if (res <= 0) {
         if ((res < 0) && (errno == EAGAIN))
             return 0;
-        LOG_E ("%p socks5 session udp fwd b send", self);
+        LOG_D ("%p socks5 session udp fwd b send", self);
         return -1;
     }
 
