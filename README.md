@@ -97,7 +97,7 @@ dns:
 #  log-file: stderr # stdout or file-path
 #  log-level: warn # debug, info or error
 #  pid-file: /run/hev-socks5-tproxy.pid
-#  limit-nofile: -1
+#  limit-nofile: 65535
 ```
 
 ### Run
