@@ -42,7 +42,7 @@ ipset/tproxy    |  tcp/udp  +---------------+   tproxy |
 ### Linux
 
 ```bash
-git clone --recursive git://github.com/heiher/hev-socks5-tproxy
+git clone --recursive https://github.com/heiher/hev-socks5-tproxy
 cd hev-socks5-tproxy
 make
 ```
@@ -52,7 +52,7 @@ make
 ```bash
 mkdir hev-socks5-tproxy
 cd hev-socks5-tproxy
-git clone --recursive git://github.com/heiher/hev-socks5-tproxy jni
+git clone --recursive https://github.com/heiher/hev-socks5-tproxy jni
 cd jni
 ndk-build
 ```
