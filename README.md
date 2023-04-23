@@ -66,7 +66,7 @@ socks5:
   port: 1080
   address: 127.0.0.1
   # Socks5 UDP relay mode (tcp|udp)
-  udp: 'tcp'
+  udp: 'udp'
   # Socks5 server username
   username: 'username'
   # Socks5 server password
