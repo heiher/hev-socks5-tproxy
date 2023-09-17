@@ -43,7 +43,8 @@ hev_socks5_session_run (HevTProxySession *base)
     hev_socks5_set_timeout (HEV_SOCKS5 (base), read_write_timeout);
 
     if (srv->user && srv->pass) {
-        hev_socks5_set_auth_user_pass (HEV_SOCKS5 (base), srv->user, srv->pass);
+        hev_socks5_client_set_auth (HEV_SOCKS5_CLIENT (base), srv->user,
+                                    srv->pass);
         LOG_D ("%p socks5 client auth %s:%s", base, srv->user, srv->pass);
     }
 
