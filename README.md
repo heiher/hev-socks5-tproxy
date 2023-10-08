@@ -72,7 +72,7 @@ socks5:
   # Socks5 server password
   password: 'password'
   # Socket mark
-  mark: 0
+  mark: 438
 
 tcp:
   port: 1088
@@ -117,10 +117,6 @@ bin/hev-socks5-tproxy conf/main.yml
 
 ##### Netfilter
 
-DON'T FORGOT TO ADD UPSTREAM ADDRESS TO BYPASS IPSET!!
-
-Or use nftables skuid/skgid match to exclude proxy process.
-
 ```
 table inet mangle {
     set byp4 {
@@ -154,6 +150,7 @@ table inet mangle {
 
     chain prerouting {
         type filter hook prerouting priority mangle; policy accept;
+        meta mark 0x438 return
         ip daddr @byp4 return
         ip6 daddr @byp6 return
         meta l4proto { tcp, udp } tproxy to :1088 meta mark set 0x00000440 accept
@@ -162,6 +159,7 @@ table inet mangle {
     # Only for local mode
     chain output {
         type route hook output priority mangle; policy accept;
+        meta mark 0x438 return
         ip daddr @byp4 return
         ip6 daddr @byp6 return
         meta l4proto { tcp, udp } meta mark set 0x00000440
@@ -182,10 +180,6 @@ ip -6 route add local default dev lo table 100
 #### Type 2: IPTables
 
 ##### Bypass ipset
-
-DON'T FORGOT TO ADD UPSTREAM ADDRESS TO BYPASS IPSET!!
-
-Or use iptables uid-owner match to exclude proxy process.
 
 ```bash
 # IPv4
@@ -228,6 +222,7 @@ Gateway and Local modes
 
 ```bash
 # IPv4
+iptables -t mangle -A PREROUTING -m mark --mark 0x438 -j RETURN
 iptables -t mangle -A PREROUTING -m set --match-set byp4 dst -j RETURN
 iptables -t mangle -A PREROUTING -p tcp -j TPROXY --on-port 1088 --tproxy-mark 1088
 iptables -t mangle -A PREROUTING -p udp -j TPROXY --on-port 1088 --tproxy-mark 1088
@@ -236,11 +231,13 @@ ip rule add fwmark 1088 table 100
 ip route add local default dev lo table 100
 
 # Only for local mode
+iptables -t mangle -A OUTPUT -m mark --mark 0x438 -j RETURN
 iptables -t mangle -A OUTPUT -m set --match-set byp4 dst -j RETURN
 iptables -t mangle -A OUTPUT -p tcp -j MARK --set-mark 1088
 iptables -t mangle -A OUTPUT -p udp -j MARK --set-mark 1088
 
 # IPv6
+ip6tables -t mangle -A PREROUTING -m mark --mark 0x438 -j RETURN
 ip6tables -t mangle -A PREROUTING -m set --match-set byp6 dst -j RETURN
 ip6tables -t mangle -A PREROUTING -p tcp -j TPROXY --on-port 1088 --tproxy-mark 1088
 ip6tables -t mangle -A PREROUTING -p udp -j TPROXY --on-port 1088 --tproxy-mark 1088
@@ -249,6 +246,7 @@ ip -6 rule add fwmark 1088 table 100
 ip -6 route add local default dev lo table 100
 
 # Only for local mode
+ip6tables -t mangle -A OUTPUT -m mark --mark 0x438 -j RETURN
 ip6tables -t mangle -A OUTPUT -m set --match-set byp6 dst -j RETURN
 ip6tables -t mangle -A OUTPUT -p tcp -j MARK --set-mark 1088
 ip6tables -t mangle -A OUTPUT -p udp -j MARK --set-mark 1088
