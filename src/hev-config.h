@@ -2,7 +2,7 @@
  ============================================================================
  Name        : hev-config.h
  Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2017 - 2021 hev
+ Copyright   : Copyright (c) 2017 - 2023 hev
  Description : Config
  ============================================================================
  */
@@ -16,6 +16,7 @@ struct _HevConfigServer
 {
     const char *user;
     const char *pass;
+    unsigned int mark;
     short udp_in_udp;
     unsigned short port;
     char addr[256];

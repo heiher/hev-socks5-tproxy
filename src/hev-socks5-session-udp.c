@@ -2,7 +2,7 @@
  ============================================================================
  Name        : hev-socks5-session-udp.c
  Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2017 - 2021 hev
+ Copyright   : Copyright (c) 2017 - 2023 hev
  Description : Socks5 Session UDP
  ============================================================================
  */
@@ -200,6 +200,33 @@ exit:
     hev_task_wakeup (splice->task);
 }
 
+static int
+hev_socks5_session_udp_bind (HevSocks5 *self, int fd,
+                             const struct sockaddr *dest)
+{
+    HevConfigServer *srv;
+
+    LOG_D ("%p socks5 session udp bind", self);
+
+    srv = hev_config_get_socks5_server ();
+
+    if (srv->mark) {
+        unsigned int mark;
+        int res = 0;
+
+        mark = srv->mark;
+#if defined(__linux__)
+        res = setsockopt (fd, SOL_SOCKET, SO_MARK, &mark, sizeof (mark));
+#elif defined(__FreeBSD__)
+        res = setsockopt (fd, SOL_SOCKET, SO_USER_COOKIE, &mark, sizeof (mark));
+#endif
+        if (res < 0)
+            return -1;
+    }
+
+    return 0;
+}
+
 static void
 hev_socks5_session_udp_splice (HevSocks5Session *base)
 {
@@ -324,6 +351,7 @@ hev_socks5_session_udp_class (void)
     HevObjectClass *okptr = HEV_OBJECT_CLASS (kptr);
 
     if (!okptr->name) {
+        HevSocks5Class *skptr;
         HevSocks5SessionIface *siptr;
         HevTProxySessionIface *tiptr;
         void *ptr;
@@ -334,6 +362,9 @@ hev_socks5_session_udp_class (void)
         okptr->name = "HevSocks5SessionUDP";
         okptr->finalizer = hev_socks5_session_udp_destruct;
         okptr->iface = hev_socks5_session_udp_iface;
+
+        skptr = HEV_SOCKS5_CLASS (kptr);
+        skptr->binder = hev_socks5_session_udp_bind;
 
         siptr = &kptr->session;
         memcpy (siptr, HEV_SOCKS5_SESSION_TYPE, sizeof (HevSocks5SessionIface));

@@ -2,7 +2,7 @@
  ============================================================================
  Name        : hev-tproxy-session-dns.c
  Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2021 hev
+ Copyright   : Copyright (c) 2021 - 2023 hev
  Description : TProxy Session DNS
  ============================================================================
  */
@@ -134,6 +134,32 @@ hev_tproxy_session_dns_parse_ip (const char *addr, int port,
     return -1;
 }
 
+static int
+hev_tproxy_session_dns_bind (HevTProxySessionDNS *self, int fd)
+{
+    HevConfigServer *srv;
+
+    LOG_D ("%p tproxy session dns bind", self);
+
+    srv = hev_config_get_socks5_server ();
+
+    if (srv->mark) {
+        unsigned int mark;
+        int res = 0;
+
+        mark = srv->mark;
+#if defined(__linux__)
+        res = setsockopt (fd, SOL_SOCKET, SO_MARK, &mark, sizeof (mark));
+#elif defined(__FreeBSD__)
+        res = setsockopt (fd, SOL_SOCKET, SO_USER_COOKIE, &mark, sizeof (mark));
+#endif
+        if (res < 0)
+            return -1;
+    }
+
+    return 0;
+}
+
 static void
 hev_tproxy_session_dns_run (HevTProxySession *base)
 {
@@ -159,6 +185,10 @@ hev_tproxy_session_dns_run (HevTProxySession *base)
         upstream = hev_config_get_dns_upstream ();
         hev_tproxy_session_dns_parse_ip (upstream, 53, &addr);
     }
+
+    res = hev_tproxy_session_dns_bind (self, fd);
+    if (res < 0)
+        goto exit;
 
     res = hev_task_io_socket_sendto (fd, self->buffer, self->size, 0,
                                      (struct sockaddr *)&addr, sizeof (addr),

@@ -2,7 +2,7 @@
  ============================================================================
  Name        : hev-socks5-session-tcp.c
  Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2017 - 2021 hev
+ Copyright   : Copyright (c) 2017 - 2023 hev
  Description : Socks5 Session TCP
  ============================================================================
  */
@@ -14,6 +14,7 @@
 #include <hev-socks5-client-tcp.h>
 #include <hev-memory-allocator.h>
 
+#include "hev-config.h"
 #include "hev-logger.h"
 
 #include "hev-socks5-session-tcp.h"
@@ -37,6 +38,33 @@ hev_socks5_session_tcp_new (struct sockaddr *addr, int fd)
     LOG_D ("%p socks5 session tcp new", self);
 
     return self;
+}
+
+static int
+hev_socks5_session_tcp_bind (HevSocks5 *self, int fd,
+                             const struct sockaddr *dest)
+{
+    HevConfigServer *srv;
+
+    LOG_D ("%p socks5 session tcp bind", self);
+
+    srv = hev_config_get_socks5_server ();
+
+    if (srv->mark) {
+        unsigned int mark;
+        int res = 0;
+
+        mark = srv->mark;
+#if defined(__linux__)
+        res = setsockopt (fd, SOL_SOCKET, SO_MARK, &mark, sizeof (mark));
+#elif defined(__FreeBSD__)
+        res = setsockopt (fd, SOL_SOCKET, SO_USER_COOKIE, &mark, sizeof (mark));
+#endif
+        if (res < 0)
+            return -1;
+    }
+
+    return 0;
 }
 
 static void
@@ -119,6 +147,7 @@ hev_socks5_session_tcp_class (void)
     HevObjectClass *okptr = HEV_OBJECT_CLASS (kptr);
 
     if (!okptr->name) {
+        HevSocks5Class *skptr;
         HevSocks5SessionIface *siptr;
         HevTProxySessionIface *tiptr;
         void *ptr;
@@ -129,6 +158,9 @@ hev_socks5_session_tcp_class (void)
         okptr->name = "HevSocks5SessionTCP";
         okptr->finalizer = hev_socks5_session_tcp_destruct;
         okptr->iface = hev_socks5_session_tcp_iface;
+
+        skptr = HEV_SOCKS5_CLASS (kptr);
+        skptr->binder = hev_socks5_session_tcp_bind;
 
         siptr = &kptr->session;
         memcpy (siptr, HEV_SOCKS5_SESSION_TYPE, sizeof (HevSocks5SessionIface));
