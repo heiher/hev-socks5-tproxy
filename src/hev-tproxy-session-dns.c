@@ -2,7 +2,7 @@
  ============================================================================
  Name        : hev-tproxy-session-dns.c
  Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2021 - 2023 hev
+ Copyright   : Copyright (c) 2021 - 2024 hev
  Description : TProxy Session DNS
  ============================================================================
  */
@@ -16,8 +16,9 @@
 #include <hev-task-io-socket.h>
 #include <hev-memory-allocator.h>
 
-#include "hev-config.h"
+#include "hev-utils.h"
 #include "hev-logger.h"
+#include "hev-config.h"
 #include "hev-compiler.h"
 #include "hev-config-const.h"
 #include "hev-tsocks-cache.h"
@@ -144,15 +145,9 @@ hev_tproxy_session_dns_bind (HevTProxySessionDNS *self, int fd)
     srv = hev_config_get_socks5_server ();
 
     if (srv->mark) {
-        unsigned int mark;
-        int res = 0;
+        int res;
 
-        mark = srv->mark;
-#if defined(__linux__)
-        res = setsockopt (fd, SOL_SOCKET, SO_MARK, &mark, sizeof (mark));
-#elif defined(__FreeBSD__)
-        res = setsockopt (fd, SOL_SOCKET, SO_USER_COOKIE, &mark, sizeof (mark));
-#endif
+        res = set_sock_mark (fd, srv->mark);
         if (res < 0)
             return -1;
     }

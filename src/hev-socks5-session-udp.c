@@ -19,6 +19,7 @@
 #include <hev-socks5-misc.h>
 #include <hev-socks5-client-udp.h>
 
+#include "hev-utils.h"
 #include "hev-logger.h"
 #include "hev-config.h"
 #include "hev-compiler.h"
@@ -30,7 +31,6 @@
 #define task_io_yielder hev_socks5_task_io_yielder
 
 typedef struct _HevSocks5UDPFrame HevSocks5UDPFrame;
-typedef struct _HevSocks5UDPSplice HevSocks5UDPSplice;
 
 struct _HevSocks5UDPFrame
 {
@@ -38,12 +38,6 @@ struct _HevSocks5UDPFrame
     struct sockaddr_in6 addr;
     void *data;
     size_t len;
-};
-
-struct _HevSocks5UDPSplice
-{
-    HevSocks5UDP *udp;
-    HevTask *task;
 };
 
 static int
@@ -176,14 +170,13 @@ hev_socks5_session_udp_send (HevSocks5SessionUDP *self, void *data, size_t len,
 static void
 splice_task_entry (void *data)
 {
-    HevSocks5UDPSplice *splice = data;
-    HevSocks5UDP *self = splice->udp;
     HevTask *task = hev_task_self ();
+    HevSocks5UDP *self = data;
     int fd;
 
     fd = hev_task_io_dup (hev_socks5_udp_get_fd (self));
     if (fd < 0)
-        goto exit;
+        return;
 
     if (hev_task_add_fd (task, fd, POLLIN) < 0)
         hev_task_mod_fd (task, fd, POLLIN);
@@ -195,9 +188,6 @@ splice_task_entry (void *data)
 
     hev_task_del_fd (task, fd);
     close (fd);
-
-exit:
-    hev_task_wakeup (splice->task);
 }
 
 static int
@@ -211,15 +201,9 @@ hev_socks5_session_udp_bind (HevSocks5 *self, int fd,
     srv = hev_config_get_socks5_server ();
 
     if (srv->mark) {
-        unsigned int mark;
-        int res = 0;
+        int res;
 
-        mark = srv->mark;
-#if defined(__linux__)
-        res = setsockopt (fd, SOL_SOCKET, SO_MARK, &mark, sizeof (mark));
-#elif defined(__FreeBSD__)
-        res = setsockopt (fd, SOL_SOCKET, SO_USER_COOKIE, &mark, sizeof (mark));
-#endif
+        res = set_sock_mark (fd, srv->mark);
         if (res < 0)
             return -1;
     }
@@ -232,37 +216,26 @@ hev_socks5_session_udp_splice (HevSocks5Session *base)
 {
     HevSocks5SessionUDP *self = HEV_SOCKS5_SESSION_UDP (base);
     HevTask *task = hev_task_self ();
-    HevSocks5UDPSplice splice;
     int stack_size;
     int fd;
 
     LOG_D ("%p socks5 session udp splice", self);
 
-    splice.task = task;
-    splice.udp = self;
+    fd = hev_socks5_udp_get_fd (HEV_SOCKS5_UDP (self));
+    if (hev_task_mod_fd (task, fd, POLLOUT) < 0)
+        hev_task_add_fd (task, fd, POLLOUT);
 
     stack_size = hev_config_get_misc_task_stack_size ();
     task = hev_task_new (stack_size);
-    hev_task_run (task, splice_task_entry, &splice);
-    task = hev_task_ref (task);
-
-    fd = hev_socks5_udp_get_fd (HEV_SOCKS5_UDP (self));
-    if (hev_task_mod_fd (splice.task, fd, POLLOUT) < 0)
-        hev_task_add_fd (splice.task, fd, POLLOUT);
+    hev_task_ref (task);
+    hev_task_run (task, splice_task_entry, self);
 
     for (;;) {
         if (hev_socks5_session_udp_fwd_f (self) < 0)
             break;
     }
 
-    for (;;) {
-        if (hev_task_get_state (task) == HEV_TASK_STOPPED)
-            break;
-
-        hev_task_wakeup (task);
-        hev_task_yield (HEV_TASK_WAITIO);
-    }
-
+    hev_task_join (task);
     hev_task_unref (task);
 }
 

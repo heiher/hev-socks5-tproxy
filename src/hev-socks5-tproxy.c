@@ -2,27 +2,25 @@
  ============================================================================
  Name        : hev-socks5-tproxy.c
  Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2017 - 2021 hev
+ Copyright   : Copyright (c) 2017 - 2024 hev
  Description : Socks5 TProxy
  ============================================================================
  */
 
 #include <stdio.h>
-#include <errno.h>
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
-#include <sys/ioctl.h>
 #include <sys/eventfd.h>
 
 #include <hev-task.h>
 #include <hev-task-io.h>
 #include <hev-task-io-socket.h>
-#include <hev-task-dns.h>
 #include <hev-task-system.h>
 #include <hev-memory-allocator.h>
 
 #include "hev-list.h"
+#include "hev-utils.h"
 #include "hev-rbtree.h"
 #include "hev-config.h"
 #include "hev-logger.h"
@@ -34,12 +32,6 @@
 #include "hev-tproxy-session-dns.h"
 
 #include "hev-socks5-tproxy.h"
-
-static void sigint_handler (int signum);
-static void hev_socks5_tcp_task_entry (void *data);
-static void hev_socks5_udp_task_entry (void *data);
-static void hev_socks5_dns_task_entry (void *data);
-static void hev_socks5_event_task_entry (void *data);
 
 static int quit;
 static int fd_event;
@@ -53,112 +45,6 @@ static HevTask *task_udp;
 static HevTask *task_dns;
 static HevTask *task_event;
 
-int
-hev_socks5_tproxy_init (void)
-{
-    LOG_D ("socks5 tproxy init");
-
-    if (hev_task_system_init () < 0) {
-        LOG_E ("socks5 tproxy task system");
-        goto exit;
-    }
-
-    if (hev_tsocks_cache_init () < 0) {
-        LOG_E ("socks5 tproxy tsocks cache");
-        goto exit;
-    }
-
-    if (signal (SIGPIPE, SIG_IGN) == SIG_ERR) {
-        LOG_E ("socks5 tproxy sigpipe");
-        goto free;
-    }
-
-    if (signal (SIGINT, sigint_handler) == SIG_ERR) {
-        LOG_E ("socks5 tproxy sigint");
-        goto free;
-    }
-
-    task_event = hev_task_new (-1);
-    if (!task_event) {
-        LOG_E ("socks5 tproxy task event");
-        goto free;
-    }
-
-    task_tcp = hev_task_new (-1);
-    if (!task_tcp) {
-        LOG_E ("socks5 tproxy task tcp");
-        goto free;
-    }
-
-    task_udp = hev_task_new (-1);
-    if (!task_udp) {
-        LOG_E ("socks5 tproxy task udp");
-        goto free;
-    }
-
-    task_dns = hev_task_new (-1);
-    if (!task_dns) {
-        LOG_E ("socks5 tproxy task dns");
-        goto free;
-    }
-
-    return 0;
-
-free:
-    hev_socks5_tproxy_fini ();
-exit:
-    return -1;
-}
-
-void
-hev_socks5_tproxy_fini (void)
-{
-    LOG_D ("socks5 tproxy fini");
-
-    if (task_event)
-        hev_task_unref (task_event);
-    if (task_tcp)
-        hev_task_unref (task_tcp);
-    if (task_udp)
-        hev_task_unref (task_udp);
-    if (task_dns)
-        hev_task_unref (task_dns);
-
-    hev_tsocks_cache_fini ();
-    hev_task_system_fini ();
-}
-
-void
-hev_socks5_tproxy_run (void)
-{
-    LOG_D ("socks5 tproxy run");
-
-    hev_task_run (task_event, hev_socks5_event_task_entry, NULL);
-
-    if (task_tcp)
-        hev_task_run (task_tcp, hev_socks5_tcp_task_entry, NULL);
-
-    if (task_udp)
-        hev_task_run (task_udp, hev_socks5_udp_task_entry, NULL);
-
-    if (task_dns)
-        hev_task_run (task_dns, hev_socks5_dns_task_entry, NULL);
-
-    hev_task_system_run ();
-}
-
-void
-hev_socks5_tproxy_stop (void)
-{
-    LOG_D ("socks5 tproxy stop");
-
-    if (fd_event < 0)
-        return;
-
-    if (eventfd_write (fd_event, 1) < 0)
-        LOG_E ("socks5 tproxy write event");
-}
-
 static void
 sigint_handler (int signum)
 {
@@ -166,38 +52,11 @@ sigint_handler (int signum)
 }
 
 static int
-hev_socks5_tproxy_sockaddr (const char *addr, const char *port, int type,
-                            struct sockaddr_in6 *saddr)
+task_io_yielder (HevTaskYieldType type, void *data)
 {
-    struct addrinfo hints = { 0 };
-    struct addrinfo *result;
-    int res;
+    hev_task_yield (type);
 
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = type;
-    hints.ai_flags = AI_PASSIVE;
-
-    res = hev_task_dns_getaddrinfo (addr, port, &hints, &result);
-    if (res < 0)
-        return -1;
-
-    if (result->ai_family == AF_INET) {
-        struct sockaddr_in *adp;
-
-        adp = (struct sockaddr_in *)result->ai_addr;
-        saddr->sin6_family = AF_INET6;
-        saddr->sin6_port = adp->sin_port;
-        memset (&saddr->sin6_addr, 0, 10);
-        saddr->sin6_addr.s6_addr[10] = 0xff;
-        saddr->sin6_addr.s6_addr[11] = 0xff;
-        memcpy (&saddr->sin6_addr.s6_addr[12], &adp->sin_addr, 4);
-    } else if (result->ai_family == AF_INET6) {
-        memcpy (saddr, result->ai_addr, sizeof (*saddr));
-    }
-
-    freeaddrinfo (result);
-
-    return 0;
+    return quit ? -1 : 0;
 }
 
 static int
@@ -215,7 +74,7 @@ hev_socks5_tproxy_tcp_socket (void)
     addr = hev_config_get_tcp_address ();
     port = hev_config_get_tcp_port ();
 
-    res = hev_socks5_tproxy_sockaddr (addr, port, SOCK_STREAM, &saddr);
+    res = resolve_to_sockaddr (addr, port, SOCK_STREAM, &saddr);
     if (res < 0) {
         LOG_E ("socks5 tproxy tcp addr");
         goto exit;
@@ -275,7 +134,7 @@ hev_socks5_tproxy_udp_socket (const char *addr, const char *port)
 
     LOG_D ("socks5 tproxy udp socket");
 
-    res = hev_socks5_tproxy_sockaddr (addr, port, SOCK_DGRAM, &saddr);
+    res = resolve_to_sockaddr (addr, port, SOCK_DGRAM, &saddr);
     if (res < 0) {
         LOG_E ("socks5 tproxy udp addr");
         goto exit;
@@ -334,14 +193,6 @@ close:
     close (fd);
 exit:
     return -1;
-}
-
-static int
-task_io_yielder (HevTaskYieldType type, void *data)
-{
-    hev_task_yield (type);
-
-    return quit ? -1 : 0;
 }
 
 static void
@@ -474,7 +325,6 @@ hev_socks5_udp_recvmsg (int fd, struct sockaddr *saddr, struct sockaddr *daddr,
         struct cmsghdr align;
     } u;
     struct msghdr mh = { 0 };
-    struct cmsghdr *cm;
     struct iovec iov;
     int res;
 
@@ -491,33 +341,7 @@ hev_socks5_udp_recvmsg (int fd, struct sockaddr *saddr, struct sockaddr *daddr,
     if (res < 0)
         return res;
 
-    for (cm = CMSG_FIRSTHDR (&mh); cm; cm = CMSG_NXTHDR (&mh, cm)) {
-        if (cm->cmsg_level == SOL_IP && cm->cmsg_type == IP_ORIGDSTADDR) {
-            struct sockaddr_in6 *dap;
-            struct sockaddr_in *sap;
-
-            dap = (struct sockaddr_in6 *)daddr;
-            sap = (struct sockaddr_in *)CMSG_DATA (cm);
-
-            dap->sin6_family = AF_INET6;
-            dap->sin6_port = sap->sin_port;
-            memset (&dap->sin6_addr, 0, 10);
-            dap->sin6_addr.s6_addr[10] = 0xff;
-            dap->sin6_addr.s6_addr[11] = 0xff;
-            memcpy (&dap->sin6_addr.s6_addr[12], &sap->sin_addr, 4);
-            break;
-        }
-        if (cm->cmsg_level == SOL_IPV6 && cm->cmsg_type == IPV6_ORIGDSTADDR) {
-            struct sockaddr_in6 *dap;
-            struct sockaddr_in *sap;
-
-            dap = (struct sockaddr_in6 *)daddr;
-            sap = (struct sockaddr_in *)CMSG_DATA (cm);
-
-            memcpy (dap, sap, sizeof (struct sockaddr_in6));
-            break;
-        }
-    }
+    msg_to_sock_addr (&mh, daddr);
 
     return res;
 }
@@ -763,4 +587,102 @@ hev_socks5_dns_task_entry (void *data)
     close (fd);
 exit:
     task_dns = NULL;
+}
+
+int
+hev_socks5_tproxy_init (void)
+{
+    LOG_D ("socks5 tproxy init");
+
+    if (hev_task_system_init () < 0) {
+        LOG_E ("socks5 tproxy task system");
+        goto exit;
+    }
+
+    if (hev_tsocks_cache_init () < 0) {
+        LOG_E ("socks5 tproxy tsocks cache");
+        goto exit;
+    }
+
+    task_event = hev_task_new (-1);
+    if (!task_event) {
+        LOG_E ("socks5 tproxy task event");
+        goto exit;
+    }
+
+    task_tcp = hev_task_new (-1);
+    if (!task_tcp) {
+        LOG_E ("socks5 tproxy task tcp");
+        goto exit;
+    }
+
+    task_udp = hev_task_new (-1);
+    if (!task_udp) {
+        LOG_E ("socks5 tproxy task udp");
+        goto exit;
+    }
+
+    task_dns = hev_task_new (-1);
+    if (!task_dns) {
+        LOG_E ("socks5 tproxy task dns");
+        goto exit;
+    }
+
+    signal (SIGPIPE, SIG_IGN);
+    signal (SIGINT, sigint_handler);
+
+    return 0;
+
+exit:
+    hev_socks5_tproxy_fini ();
+    return -1;
+}
+
+void
+hev_socks5_tproxy_fini (void)
+{
+    LOG_D ("socks5 tproxy fini");
+
+    if (task_event)
+        hev_task_unref (task_event);
+    if (task_tcp)
+        hev_task_unref (task_tcp);
+    if (task_udp)
+        hev_task_unref (task_udp);
+    if (task_dns)
+        hev_task_unref (task_dns);
+
+    hev_tsocks_cache_fini ();
+    hev_task_system_fini ();
+}
+
+void
+hev_socks5_tproxy_run (void)
+{
+    LOG_D ("socks5 tproxy run");
+
+    hev_task_run (task_event, hev_socks5_event_task_entry, NULL);
+
+    if (task_tcp)
+        hev_task_run (task_tcp, hev_socks5_tcp_task_entry, NULL);
+
+    if (task_udp)
+        hev_task_run (task_udp, hev_socks5_udp_task_entry, NULL);
+
+    if (task_dns)
+        hev_task_run (task_dns, hev_socks5_dns_task_entry, NULL);
+
+    hev_task_system_run ();
+}
+
+void
+hev_socks5_tproxy_stop (void)
+{
+    LOG_D ("socks5 tproxy stop");
+
+    if (fd_event < 0)
+        return;
+
+    if (eventfd_write (fd_event, 1) < 0)
+        LOG_E ("socks5 tproxy write event");
 }

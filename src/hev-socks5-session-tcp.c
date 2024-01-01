@@ -2,7 +2,7 @@
  ============================================================================
  Name        : hev-socks5-session-tcp.c
  Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2017 - 2023 hev
+ Copyright   : Copyright (c) 2017 - 2024 hev
  Description : Socks5 Session TCP
  ============================================================================
  */
@@ -14,6 +14,7 @@
 #include <hev-socks5-client-tcp.h>
 #include <hev-memory-allocator.h>
 
+#include "hev-utils.h"
 #include "hev-config.h"
 #include "hev-logger.h"
 
@@ -51,15 +52,9 @@ hev_socks5_session_tcp_bind (HevSocks5 *self, int fd,
     srv = hev_config_get_socks5_server ();
 
     if (srv->mark) {
-        unsigned int mark;
-        int res = 0;
+        int res;
 
-        mark = srv->mark;
-#if defined(__linux__)
-        res = setsockopt (fd, SOL_SOCKET, SO_MARK, &mark, sizeof (mark));
-#elif defined(__FreeBSD__)
-        res = setsockopt (fd, SOL_SOCKET, SO_USER_COOKIE, &mark, sizeof (mark));
-#endif
+        res = set_sock_mark (fd, srv->mark);
         if (res < 0)
             return -1;
     }
