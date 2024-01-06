@@ -73,6 +73,8 @@ hev_socks5_tproxy_tcp_socket (void)
 
     addr = hev_config_get_tcp_address ();
     port = hev_config_get_tcp_port ();
+    if (!addr)
+        goto exit;
 
     res = resolve_to_sockaddr (addr, port, SOCK_STREAM, &saddr);
     if (res < 0) {
@@ -467,6 +469,8 @@ hev_socks5_udp_task_entry (void *data)
 
     addr = hev_config_get_udp_address ();
     port = hev_config_get_udp_port ();
+    if (!addr)
+        goto exit;
 
     fd = hev_socks5_tproxy_udp_socket (addr, port);
     if (fd < 0)
@@ -538,6 +542,8 @@ hev_socks5_dns_task_entry (void *data)
 
     addr = hev_config_get_dns_address ();
     port = hev_config_get_dns_port ();
+    if (!addr)
+        goto exit;
 
     fd = hev_socks5_tproxy_udp_socket (addr, port);
     if (fd < 0)

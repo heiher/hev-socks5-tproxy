@@ -375,6 +375,9 @@ hev_config_get_socks5_server (void)
 const char *
 hev_config_get_tcp_address (void)
 {
+    if ('\0' == tcp_address[0])
+        return NULL;
+
     return tcp_address;
 }
 
@@ -387,6 +390,9 @@ hev_config_get_tcp_port (void)
 const char *
 hev_config_get_udp_address (void)
 {
+    if ('\0' == udp_address[0])
+        return NULL;
+
     return udp_address;
 }
 
@@ -405,6 +411,9 @@ hev_config_get_dns_upstream (void)
 const char *
 hev_config_get_dns_address (void)
 {
+    if ('\0' == dns_address[0])
+        return NULL;
+
     return dns_address;
 }
 
