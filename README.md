@@ -93,7 +93,7 @@ dns:
   upstream: 127.0.0.1
 
 #misc:
-#  task-stack-size: 8192 # task stack size (bytes)
+#  task-stack-size: 16384 # task stack size (bytes)
 #  connect-timeout: 5000 # connect timeout (ms)
 #  read-write-timeout: 60000 # read-write timeout (ms)
 #  log-file: stderr # stdout or file-path
