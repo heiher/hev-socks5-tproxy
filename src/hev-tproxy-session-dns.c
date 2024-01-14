@@ -251,7 +251,7 @@ hev_tproxy_session_dns_destruct (HevObject *base)
 {
     LOG_D ("tproxy session dns destruct");
 
-    HEV_OBJECT_TYPE->finalizer (base);
+    HEV_OBJECT_TYPE->destruct (base);
     hev_free (base);
 }
 
@@ -276,7 +276,7 @@ hev_tproxy_session_dns_class (void)
         memcpy (kptr, HEV_OBJECT_TYPE, sizeof (HevObjectClass));
 
         okptr->name = "HevTProxySessionDNS";
-        okptr->finalizer = hev_tproxy_session_dns_destruct;
+        okptr->destruct = hev_tproxy_session_dns_destruct;
         okptr->iface = hev_tproxy_session_dns_iface;
 
         tiptr = &kptr->session;
