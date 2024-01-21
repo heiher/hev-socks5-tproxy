@@ -44,6 +44,7 @@ hev_config_parse_server (yaml_document_t *doc, yaml_node_t *base,
     const char *user = NULL;
     const char *pass = NULL;
     const char *mark = NULL;
+    const char *pipe = NULL;
 
     if (!base || YAML_MAPPING_NODE != base->type || !srv)
         return -1;
@@ -72,6 +73,8 @@ hev_config_parse_server (yaml_document_t *doc, yaml_node_t *base,
             addr = value;
         else if (0 == strcmp (key, "udp"))
             udpm = value;
+        else if (0 == strcmp (key, "pipeline"))
+            pipe = value;
         else if (0 == strcmp (key, "username"))
             user = value;
         else if (0 == strcmp (key, "password"))
@@ -97,6 +100,9 @@ hev_config_parse_server (yaml_document_t *doc, yaml_node_t *base,
 
     strncpy (srv->addr, addr, 256 - 1);
     srv->port = strtoul (port, NULL, 10);
+
+    if (pipe && (strcasecmp (pipe, "true") == 0))
+        srv->pipeline = 1;
 
     if (udpm && (strcasecmp (udpm, "udp") == 0))
         srv->udp_in_udp = 1;

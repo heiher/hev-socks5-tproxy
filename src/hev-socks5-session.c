@@ -48,7 +48,7 @@ hev_socks5_session_run (HevTProxySession *base)
         LOG_D ("%p socks5 client auth %s:%s", base, srv->user, srv->pass);
     }
 
-    res = hev_socks5_client_handshake (HEV_SOCKS5_CLIENT (base));
+    res = hev_socks5_client_handshake (HEV_SOCKS5_CLIENT (base), srv->pipeline);
     if (res < 0) {
         LOG_E ("%p socks5 session handshake", base);
         return;
