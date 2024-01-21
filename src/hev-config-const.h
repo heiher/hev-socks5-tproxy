@@ -2,7 +2,7 @@
  ============================================================================
  Name        : hev-config-const.h
  Author      : Heiher <r@hev.cc>
- Copyright   : Copyright (c) 2017 - 2023 hev
+ Copyright   : Copyright (c) 2017 - 2024 hev
  Description : Config Const
  ============================================================================
  */
@@ -12,7 +12,7 @@
 
 #define MAJOR_VERSION (2)
 #define MINOR_VERSION (5)
-#define MICRO_VERSION (2)
+#define MICRO_VERSION (3)
 
 static const int UDP_BUF_SIZE = 1500;
 static const int UDP_POOL_SIZE = 512;
