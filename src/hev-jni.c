@@ -31,6 +31,7 @@
 
 static JavaVM *java_vm;
 static pthread_t work_thread;
+static pthread_mutex_t mutex;
 static pthread_key_t current_jni_env;
 
 static void native_start_service (JNIEnv *env, jobject thiz,
@@ -66,6 +67,7 @@ JNI_OnLoad (JavaVM *vm, void *reserved)
     (*env)->DeleteLocalRef (env, klass);
 
     pthread_key_create (&current_jni_env, detach_current_thread);
+    pthread_mutex_init (&mutex, NULL);
 
     return JNI_VERSION_1_4;
 }
@@ -91,24 +93,30 @@ native_start_service (JNIEnv *env, jobject thiz, jstring config_path)
     char **argv;
     const jbyte *bytes;
 
-    argv = malloc (sizeof (char *) * 2);
+    pthread_mutex_lock (&mutex);
+    if (work_thread)
+        return;
 
+    argv = malloc (sizeof (char *) * 2);
     bytes = (const jbyte *)(*env)->GetStringUTFChars (env, config_path, NULL);
     argv[1] = strdup ((const char *)bytes);
     (*env)->ReleaseStringUTFChars (env, config_path, (const char *)bytes);
 
     pthread_create (&work_thread, NULL, thread_handler, argv);
+    pthread_mutex_unlock (&mutex);
 }
 
 static void
 native_stop_service (JNIEnv *env, jobject thiz)
 {
+    pthread_mutex_lock (&mutex);
     if (!work_thread)
         return;
 
     quit ();
     pthread_join (work_thread, NULL);
     work_thread = 0;
+    pthread_mutex_unlock (&mutex);
 }
 
 #endif
