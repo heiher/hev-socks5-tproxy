@@ -28,7 +28,7 @@ udp:
   # UDP address
   address: '::'
 
-# Redirect DNS to local server on gateway
+# Proxy DNS for bridged mode
 #   [address]:port <-> [upstream]:53 (dnsmasq)
 dns:
   # DNS port

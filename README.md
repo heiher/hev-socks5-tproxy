@@ -17,11 +17,11 @@ HevSocks5TProxy is a simple, lightweight transparent proxy for Linux.
                          |                     |
                          +----------+----------+
                              uplink | (eth1)
-                +-------------------o<-----------------+ (114.114.114.114)
+                +-------------------o<-----------------+ (direct dns)
                 |                   ^                  |
                 |            socks5 |                  |
 set ether daddr |    dns    +---------------+          |
-rule routing    |?--------->| Socks5 TProxy |<---------+ (8.8.8.8)
+rule routing    |?--------->| Socks5 TProxy |<---------+ (proxy dns)
 ipset/tproxy    |  tcp/udp  +---------------+   tproxy |
                 |                   | dns              |
                 |                   v                  |
@@ -84,7 +84,7 @@ udp:
   port: 1088
   address: '::'
 
-# Redirect DNS to local server on gateway
+# Proxy DNS for bridged mode
 #   [address]:port <-> [upstream]:53 (dnsmasq)
 dns:
   # DNS port
@@ -124,30 +124,42 @@ table inet mangle {
     set byp4 {
         typeof ip daddr
         flags interval
-        elements = { 0.0.0.0/8, 10.0.0.0/8,
-                 127.0.0.0/8, 169.254.0.0/16,
-                 172.16.0.0/12, 192.0.0.0/24,
-                 192.0.2.0/24, 192.88.99.0/24,
-                 192.168.0.0/16, 198.18.0.0/15,
-                 198.51.100.0/24, 203.0.113.0/24,
-                 224.0.0.0/4, 240.0.0.0-255.255.255.255 }
+        elements = {
+            0.0.0.0/8,
+            10.0.0.0/8,
+            100.64.0.0/10,
+            127.0.0.0/8,
+            169.254.0.0/16,
+            172.16.0.0/12,
+            192.0.0.0/24,
+            192.0.2.0/24,
+            192.88.99.0/24,
+            192.168.0.0/16,
+            198.18.0.0/15,
+            198.51.100.0/24,
+            203.0.113.0/24,
+            224.0.0.0/4,
+            240.0.0.0/4
+        }
     }
 
     set byp6 {
         typeof ip6 daddr
         flags interval
-        elements = { ::,
-                 ::1,
-                 ::ffff:0:0:0/96,
-                 64:ff9b::/96,
-                 100::/64,
-                 2001::/32,
-                 2001:20::/28,
-                 2001:db8::/32,
-                 2002::/16,
-                 fc00::/7,
-                 fe80::/10,
-                 ff00::-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff }
+        elements = {
+            ::/128,
+            ::1/128,
+            ::ffff:0:0:0/96,
+            64:ff9b::/96,
+            100::/64,
+            2001::/32,
+            2001:20::/28,
+            2001:db8::/32,
+            2002::/16,
+            fc00::/7,
+            fe80::/10,
+            ff00::/8
+        }
     }
 
     chain prerouting {
@@ -155,7 +167,7 @@ table inet mangle {
         meta mark 0x438 return
         ip daddr @byp4 return
         ip6 daddr @byp6 return
-        meta l4proto { tcp, udp } tproxy to :1088 meta mark set 0x00000440 accept
+        meta l4proto { tcp, udp } tproxy to :1088 meta mark set 0x440 accept
     }
 
     # Only for local mode
@@ -164,7 +176,7 @@ table inet mangle {
         meta mark 0x438 return
         ip daddr @byp4 return
         ip6 daddr @byp6 return
-        meta l4proto { tcp, udp } meta mark set 0x00000440
+        meta l4proto { tcp, udp } meta mark set 0x440
     }
 }
 ```
@@ -188,6 +200,7 @@ ip -6 route add local default dev lo table 100
 ipset create byp4 hash:net family inet hashsize 2048 maxelem 65536
 ipset add byp4 0.0.0.0/8
 ipset add byp4 10.0.0.0/8
+ipset add byp4 100.64.0.0/10
 ipset add byp4 127.0.0.0/8
 ipset add byp4 169.254.0.0/16
 ipset add byp4 172.16.0.0/12
@@ -200,12 +213,11 @@ ipset add byp4 198.51.100.0/24
 ipset add byp4 203.0.113.0/24
 ipset add byp4 224.0.0.0/4
 ipset add byp4 240.0.0.0/4
-ipset add byp4 255.255.255.255
 
 # IPv6
 ipset create byp6 hash:net family inet6 hashsize 1024 maxelem 65536
-ipset add byp6 ::
-ipset add byp6 ::1
+ipset add byp6 ::/128
+ipset add byp6 ::1/128
 ipset add byp6 ::ffff:0:0:0/96
 ipset add byp6 64:ff9b::/96
 ipset add byp6 100::/64
