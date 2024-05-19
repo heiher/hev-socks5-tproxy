@@ -74,7 +74,7 @@ socks5:
   # Socks5 server password
   password: 'password'
   # Socket mark
-  mark: 438
+  mark: 0x438
 
 tcp:
   port: 1088
