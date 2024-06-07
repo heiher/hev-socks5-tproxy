@@ -275,4 +275,4 @@ ip6tables -t mangle -A OUTPUT -p udp -j MARK --set-mark 1088
 
 ## License
 
-GPLv3
+MIT
