@@ -95,7 +95,7 @@ native_start_service (JNIEnv *env, jobject thiz, jstring config_path)
 
     pthread_mutex_lock (&mutex);
     if (work_thread)
-        return;
+        goto exit;
 
     argv = malloc (sizeof (char *) * 2);
     bytes = (const jbyte *)(*env)->GetStringUTFChars (env, config_path, NULL);
@@ -103,6 +103,7 @@ native_start_service (JNIEnv *env, jobject thiz, jstring config_path)
     (*env)->ReleaseStringUTFChars (env, config_path, (const char *)bytes);
 
     pthread_create (&work_thread, NULL, thread_handler, argv);
+exit:
     pthread_mutex_unlock (&mutex);
 }
 
@@ -111,11 +112,12 @@ native_stop_service (JNIEnv *env, jobject thiz)
 {
     pthread_mutex_lock (&mutex);
     if (!work_thread)
-        return;
+        goto exit;
 
     quit ();
     pthread_join (work_thread, NULL);
     work_thread = 0;
+exit:
     pthread_mutex_unlock (&mutex);
 }
 
