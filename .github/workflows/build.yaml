@@ -12,7 +12,7 @@ on:
 jobs:
   source:
     name: Source
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'release'
     steps:
       - name: Checkout
@@ -39,7 +39,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         include:
