@@ -16,5 +16,6 @@ int hev_tsocks_cache_init (void);
 void hev_tsocks_cache_fini (void);
 
 int hev_tsocks_cache_get (struct sockaddr *addr);
+void hev_tsocks_cache_put (int fd);
 
 #endif /* __HEV_TSOCKS_CACHE_H__ */

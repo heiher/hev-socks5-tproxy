@@ -9,6 +9,7 @@
 
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #include <hev-task.h>
 #include <hev-task-io.h>
@@ -37,15 +38,31 @@ struct _HevTSock
 static int cached;
 static HevList lru;
 static HevRBTree cache;
+static pthread_rwlock_t rwlock;
+static pthread_spinlock_t spinlock;
 
 int
 hev_tsocks_cache_init (void)
 {
+    int res;
+
     LOG_D ("tsocks cache init");
 
     cached = 0;
     memset (&lru, 0, sizeof (lru));
     memset (&cache, 0, sizeof (cache));
+
+    res = pthread_rwlock_init (&rwlock, NULL);
+    if (res < 0) {
+        LOG_E ("tsocks rwlock init");
+        return -1;
+    }
+
+    res = pthread_spin_init (&spinlock, PTHREAD_PROCESS_PRIVATE);
+    if (res < 0) {
+        LOG_E ("tsocks spinlock init");
+        return -1;
+    }
 
     return 0;
 }
@@ -117,6 +134,9 @@ hev_tsocks_cache_fini (void)
         node = hev_list_node_next (node);
         hev_tsocks_cache_tsock_destroy (ts);
     }
+
+    pthread_rwlock_destroy (&rwlock);
+    pthread_spin_destroy (&spinlock);
 }
 
 static HevTSock *
@@ -142,7 +162,7 @@ hev_tsocks_cache_find (struct sockaddr *addr)
     return NULL;
 }
 
-static void
+static int
 hev_tsocks_cache_add (HevTSock *ts)
 {
     HevRBTreeNode **new = &cache.root, *parent = NULL;
@@ -159,12 +179,16 @@ hev_tsocks_cache_add (HevTSock *ts)
             new = &((*new)->left);
         else if (res > 0)
             new = &((*new)->right);
+        else
+            return -1;
     }
 
     cached++;
     hev_list_add_tail (&lru, &ts->lnode);
     hev_rbtree_node_link (&ts->rnode, parent, new);
     hev_rbtree_insert_color (&cache, &ts->rnode);
+
+    return 0;
 }
 
 static void
@@ -185,29 +209,53 @@ hev_tsocks_cache_update (HevTSock *ts)
 int
 hev_tsocks_cache_get (struct sockaddr *addr)
 {
-    HevTSock *ts;
-
     LOG_D ("tsocks cache get");
 
-    ts = hev_tsocks_cache_find (addr);
-    if (ts) {
-        hev_tsocks_cache_update (ts);
-        return ts->fd;
+    for (;;) {
+        HevTSock *ts;
+        int res;
+
+        pthread_rwlock_rdlock (&rwlock);
+        ts = hev_tsocks_cache_find (addr);
+        if (ts) {
+            pthread_spin_lock (&spinlock);
+            hev_tsocks_cache_update (ts);
+            pthread_spin_unlock (&spinlock);
+            return ts->fd;
+        }
+        pthread_rwlock_unlock (&rwlock);
+
+        if (cached >= TSOCKS_MAX_CACHED) {
+            pthread_rwlock_wrlock (&rwlock);
+            if (cached >= TSOCKS_MAX_CACHED) {
+                HevListNode *node;
+                node = hev_list_first (&lru);
+                ts = container_of (node, HevTSock, lnode);
+                hev_tsocks_cache_del (ts);
+            }
+            pthread_rwlock_unlock (&rwlock);
+            if (ts)
+                hev_tsocks_cache_tsock_destroy (ts);
+        }
+
+        ts = hev_tsocks_cache_tsock_new (addr);
+        if (!ts)
+            break;
+
+        pthread_rwlock_wrlock (&rwlock);
+        res = hev_tsocks_cache_add (ts);
+        pthread_rwlock_unlock (&rwlock);
+        if (res < 0)
+            hev_tsocks_cache_tsock_destroy (ts);
     }
 
-    if (cached >= TSOCKS_MAX_CACHED) {
-        HevListNode *node;
+    return -1;
+}
 
-        node = hev_list_first (&lru);
-        ts = container_of (node, HevTSock, lnode);
-        hev_tsocks_cache_del (ts);
-        hev_tsocks_cache_tsock_destroy (ts);
-    }
+void
+hev_tsocks_cache_put (int fd)
+{
+    LOG_D ("tsocks cache put");
 
-    ts = hev_tsocks_cache_tsock_new (addr);
-    if (!ts)
-        return -1;
-
-    hev_tsocks_cache_add (ts);
-    return ts->fd;
+    pthread_rwlock_unlock (&rwlock);
 }

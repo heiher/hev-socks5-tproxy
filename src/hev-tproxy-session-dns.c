@@ -204,6 +204,7 @@ hev_tproxy_session_dns_run (HevTProxySession *base)
         goto exit;
 
     sendto (tfd, self->buffer, res, 0, sap, sizeof (self->saddr));
+    hev_tsocks_cache_put (tfd);
 
 exit:
     close (fd);

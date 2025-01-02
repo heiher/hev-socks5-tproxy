@@ -124,6 +124,7 @@ hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self)
     }
 
     res = sendto (fd, buf, res, 0, daddr, sizeof (self->addr));
+    hev_tsocks_cache_put (fd);
     if (res <= 0) {
         if ((res < 0) && (errno == EAGAIN))
             return 0;
