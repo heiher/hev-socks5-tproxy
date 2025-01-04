@@ -1,5 +1,9 @@
 # Main configuration for hev-socks5-tproxy
 
+main:
+  # Worker threads
+  workers: 1
+
 socks5:
   # Socks5 server port
   port: 1080

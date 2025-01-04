@@ -13,6 +13,7 @@
 #include "hev-logger.h"
 #include "hev-config.h"
 
+static unsigned int workers = 1;
 static HevConfigServer srv;
 static char tcp_address[256];
 static char tcp_port[8];
@@ -30,6 +31,42 @@ static int connect_timeout = 5000;
 static int read_write_timeout = 60000;
 static int limit_nofile = 65535;
 static int log_level = HEV_LOGGER_WARN;
+
+static int
+hev_config_parse_main (yaml_document_t *doc, yaml_node_t *base)
+{
+    yaml_node_pair_t *pair;
+
+    if (!base || YAML_MAPPING_NODE != base->type)
+        return -1;
+
+    for (pair = base->data.mapping.pairs.start;
+         pair < base->data.mapping.pairs.top; pair++) {
+        yaml_node_t *node;
+        const char *key, *value;
+
+        if (!pair->key || !pair->value)
+            break;
+
+        node = yaml_document_get_node (doc, pair->key);
+        if (!node || YAML_SCALAR_NODE != node->type)
+            break;
+        key = (const char *)node->data.scalar.value;
+
+        node = yaml_document_get_node (doc, pair->value);
+        if (!node || YAML_SCALAR_NODE != node->type)
+            break;
+        value = (const char *)node->data.scalar.value;
+
+        if (0 == strcmp (key, "workers"))
+            workers = strtoul (value, NULL, 10);
+    }
+
+    if (!workers)
+        workers = 1;
+
+    return 0;
+}
 
 static int
 hev_config_parse_server (yaml_document_t *doc, yaml_node_t *base,
@@ -315,7 +352,9 @@ hev_config_parse_doc (yaml_document_t *doc)
         key = (const char *)node->data.scalar.value;
         node = yaml_document_get_node (doc, pair->value);
 
-        if (0 == strcmp (key, "socks5"))
+        if (0 == strcmp (key, "main"))
+            res = hev_config_parse_main (doc, node);
+        else if (0 == strcmp (key, "socks5"))
             res = hev_config_parse_server (doc, node, key, &srv);
         else if (0 == strcmp (key, "tcp"))
             res = hev_config_parse_addr (doc, node, key, tcp_address, tcp_port);
@@ -370,6 +409,12 @@ exit:
 void
 hev_config_fini (void)
 {
+}
+
+unsigned int
+hev_config_get_workers (void)
+{
+    return workers;
 }
 
 HevConfigServer *

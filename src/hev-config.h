@@ -26,6 +26,8 @@ struct _HevConfigServer
 int hev_config_init (const char *path);
 void hev_config_fini (void);
 
+unsigned int hev_config_get_workers (void);
+
 HevConfigServer *hev_config_get_socks5_server (void);
 const char *hev_config_get_tcp_address (void);
 const char *hev_config_get_tcp_port (void);

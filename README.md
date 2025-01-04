@@ -62,6 +62,9 @@ ndk-build
 ### Config
 
 ```yaml
+main:
+  workers: 1
+
 socks5:
   port: 1080
   address: 127.0.0.1
