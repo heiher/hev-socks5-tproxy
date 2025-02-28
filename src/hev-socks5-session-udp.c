@@ -28,8 +28,6 @@
 
 #include "hev-socks5-session-udp.h"
 
-#define task_io_yielder hev_socks5_task_io_yielder
-
 typedef struct _HevSocks5UDPFrame HevSocks5UDPFrame;
 
 struct _HevSocks5UDPFrame
@@ -39,6 +37,25 @@ struct _HevSocks5UDPFrame
     void *data;
     size_t len;
 };
+
+static int
+task_io_yielder (HevTaskYieldType type, void *data)
+{
+    HevSocks5 *self = data;
+
+    if (self->type == HEV_SOCKS5_TYPE_UDP_IN_UDP) {
+        ssize_t res;
+        char buf;
+
+        res = recv (self->fd, &buf, sizeof (buf), 0);
+        if ((res == 0) || ((res < 0) && (errno != EAGAIN))) {
+            hev_socks5_set_timeout (self, 0);
+            return -1;
+        }
+    }
+
+    return hev_socks5_task_io_yielder (type, data);
+}
 
 static int
 hev_socks5_session_udp_fwd_f (HevSocks5SessionUDP *self)
@@ -80,6 +97,8 @@ hev_socks5_session_udp_fwd_f (HevSocks5SessionUDP *self)
             if (self->alive && hev_socks5_get_timeout (HEV_SOCKS5 (self)))
                 return 0;
         }
+        if (HEV_SOCKS5 (self)->type == HEV_SOCKS5_TYPE_UDP_IN_TCP)
+            hev_socks5_set_timeout (HEV_SOCKS5 (self), 0);
         LOG_D ("%p socks5 session udp fwd f send", self);
         return -1;
     }
@@ -113,6 +132,8 @@ hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self)
             if (self->alive && hev_socks5_get_timeout (HEV_SOCKS5 (self)))
                 return 0;
         }
+        if (HEV_SOCKS5 (self)->type == HEV_SOCKS5_TYPE_UDP_IN_TCP)
+            hev_socks5_set_timeout (HEV_SOCKS5 (self), 0);
         LOG_D ("%p socks5 session udp fwd b recv", self);
         return -1;
     }
