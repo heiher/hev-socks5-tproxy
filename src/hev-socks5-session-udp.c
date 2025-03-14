@@ -251,6 +251,27 @@ hev_socks5_session_udp_bind (HevSocks5 *self, int fd,
     return 0;
 }
 
+static HevSocks5Addr *
+hev_socks5_session_udp_get_upstream_addr (HevSocks5Client *base)
+{
+    HevSocks5SessionUDP *self = HEV_SOCKS5_SESSION_UDP (base);
+    HevSocks5Addr *addr;
+
+    LOG_D ("%p socks5 session udp get upstream addr", self);
+
+    if (IN6_IS_ADDR_V4MAPPED (&self->addr.sin6_addr)) {
+        addr = hev_malloc0 (7);
+        if (addr)
+            addr->atype = HEV_SOCKS5_ADDR_TYPE_IPV4;
+    } else {
+        addr = hev_malloc0 (19);
+        if (addr)
+            addr->atype = HEV_SOCKS5_ADDR_TYPE_IPV6;
+    }
+
+    return addr;
+}
+
 static void
 hev_socks5_session_udp_splice (HevSocks5Session *base)
 {
@@ -368,6 +389,7 @@ hev_socks5_session_udp_class (void)
 
     if (!okptr->name) {
         HevSocks5Class *skptr;
+        HevSocks5ClientClass *ckptr;
         HevSocks5SessionIface *siptr;
         HevTProxySessionIface *tiptr;
         void *ptr;
@@ -381,6 +403,9 @@ hev_socks5_session_udp_class (void)
 
         skptr = HEV_SOCKS5_CLASS (kptr);
         skptr->binder = hev_socks5_session_udp_bind;
+
+        ckptr = HEV_SOCKS5_CLIENT_CLASS (kptr);
+        ckptr->get_upstream_addr = hev_socks5_session_udp_get_upstream_addr;
 
         siptr = &kptr->session;
         memcpy (siptr, HEV_SOCKS5_SESSION_TYPE, sizeof (HevSocks5SessionIface));
