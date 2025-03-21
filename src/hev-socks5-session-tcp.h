@@ -44,8 +44,9 @@ struct _HevSocks5SessionTCPClass
 HevObjectClass *hev_socks5_session_tcp_class (void);
 
 int hev_socks5_session_tcp_construct (HevSocks5SessionTCP *self,
-                                      struct sockaddr *addr, int fd);
+                                      struct sockaddr_in6 *addr, int fd);
 
-HevSocks5SessionTCP *hev_socks5_session_tcp_new (struct sockaddr *addr, int fd);
+HevSocks5SessionTCP *hev_socks5_session_tcp_new (struct sockaddr_in6 *addr,
+                                                 int fd);
 
 #endif /* __HEV_SOCKS5_SESSION_TCP_H__ */

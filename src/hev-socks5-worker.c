@@ -103,7 +103,7 @@ hev_socks5_tcp_session_new (HevSocks5Worker *self, int fd)
         return;
     }
 
-    tcp = hev_socks5_session_tcp_new ((struct sockaddr *)&addr, fd);
+    tcp = hev_socks5_session_tcp_new (&addr, fd);
     if (!tcp) {
         close (fd);
         return;

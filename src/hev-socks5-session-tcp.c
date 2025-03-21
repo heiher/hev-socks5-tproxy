@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include <hev-socks5-tcp.h>
+#include <hev-socks5-misc.h>
 #include <hev-socks5-client-tcp.h>
 #include <hev-memory-allocator.h>
 
@@ -21,7 +22,7 @@
 #include "hev-socks5-session-tcp.h"
 
 HevSocks5SessionTCP *
-hev_socks5_session_tcp_new (struct sockaddr *addr, int fd)
+hev_socks5_session_tcp_new (struct sockaddr_in6 *addr, int fd)
 {
     HevSocks5SessionTCP *self;
     int res;
@@ -93,11 +94,13 @@ hev_socks5_session_tcp_set_task (HevSocks5Session *base, HevTask *task)
 
 int
 hev_socks5_session_tcp_construct (HevSocks5SessionTCP *self,
-                                  struct sockaddr *addr, int fd)
+                                  struct sockaddr_in6 *addr, int fd)
 {
+    HevSocks5Addr saddr;
     int res;
 
-    res = hev_socks5_client_tcp_construct_ip (&self->base, addr);
+    hev_socks5_addr_from_sockaddr6 (&saddr, addr);
+    res = hev_socks5_client_tcp_construct (&self->base, &saddr);
     if (res < 0)
         return -1;
 

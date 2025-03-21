@@ -33,7 +33,7 @@ typedef struct _HevSocks5UDPFrame HevSocks5UDPFrame;
 struct _HevSocks5UDPFrame
 {
     HevListNode node;
-    struct sockaddr_in6 addr;
+    HevSocks5Addr addr;
     void *data;
     size_t len;
 };
@@ -61,7 +61,6 @@ static int
 hev_socks5_session_udp_fwd_f (HevSocks5SessionUDP *self)
 {
     HevSocks5UDPFrame *frame;
-    struct sockaddr *addr;
     HevListNode *node;
     HevSocks5UDP *udp;
     int res;
@@ -82,11 +81,9 @@ hev_socks5_session_udp_fwd_f (HevSocks5SessionUDP *self)
         }
     }
 
-    frame = container_of (node, HevSocks5UDPFrame, node);
-    addr = (struct sockaddr *)&frame->addr;
-
     udp = HEV_SOCKS5_UDP (self);
-    res = hev_socks5_udp_sendto (udp, frame->data, frame->len, addr);
+    frame = container_of (node, HevSocks5UDPFrame, node);
+    res = hev_socks5_udp_sendto (udp, frame->data, frame->len, &frame->addr);
     hev_list_del (&self->frame_list, node);
     hev_free (frame->data);
     hev_free (frame);
@@ -112,20 +109,17 @@ static int
 hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self)
 {
     HevSocks5UDP *udp = HEV_SOCKS5_UDP (self);
-    struct sockaddr_in6 addr = { 0 };
-    struct sockaddr *saddr;
-    struct sockaddr *daddr;
     uint8_t buf[UDP_BUF_SIZE];
-    int res;
+    struct sockaddr_in6 saddr;
+    HevSocks5Addr addr;
+    int family;
+    ssize_t res;
+    int ret;
     int fd;
 
     LOG_D ("%p socks5 session udp fwd b", self);
 
-    addr.sin6_family = AF_INET6;
-    saddr = (struct sockaddr *)&addr;
-    daddr = (struct sockaddr *)&self->addr;
-
-    res = hev_socks5_udp_recvfrom (udp, buf, sizeof (buf), saddr);
+    res = hev_socks5_udp_recvfrom (udp, buf, sizeof (buf), &addr);
     if (res <= 0) {
         if (res < -1) {
             self->alive &= ~HEV_SOCKS5_SESSION_UDP_ALIVE_B;
@@ -138,13 +132,20 @@ hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self)
         return -1;
     }
 
-    fd = hev_tsocks_cache_get (saddr);
+    ret = hev_socks5_addr_into_sockaddr6 (&addr, &saddr, &family);
+    if (ret < 0) {
+        LOG_D ("%p socks5 session udp fwd b addr", self);
+        return -1;
+    }
+
+    fd = hev_tsocks_cache_get ((struct sockaddr *)&saddr);
     if (fd < 0) {
         LOG_D ("%p socks5 session udp tsocks get", self);
         return -1;
     }
 
-    res = sendto (fd, buf, res, 0, daddr, sizeof (self->addr));
+    res = sendto (fd, buf, res, 0, (struct sockaddr *)&self->addr,
+                  sizeof (self->addr));
     hev_tsocks_cache_put (fd);
     if (res <= 0) {
         if ((res < 0) && (errno == EAGAIN))
@@ -197,7 +198,7 @@ hev_socks5_session_udp_send (HevSocks5SessionUDP *self, void *data, size_t len,
     frame->len = len;
     frame->data = data;
     memset (&frame->node, 0, sizeof (frame->node));
-    memcpy (&frame->addr, addr, sizeof (struct sockaddr_in6));
+    hev_socks5_addr_from_sockaddr6 (&frame->addr, (struct sockaddr_in6 *)addr);
 
     self->frames++;
     hev_list_add_tail (&self->frame_list, &frame->node);
