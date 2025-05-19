@@ -32,6 +32,7 @@
 #define STR_ARG(c) #c
 #define N_ELEMENTS(arr) (sizeof (arr) / sizeof ((arr)[0]))
 
+static int is_working;
 static JavaVM *java_vm;
 static pthread_t work_thread;
 static pthread_mutex_t mutex;
@@ -93,11 +94,13 @@ thread_handler (void *data)
 static void
 native_start_service (JNIEnv *env, jobject thiz, jstring config_path)
 {
-    char **argv;
     const jbyte *bytes;
+    char **argv;
+    int res;
 
     pthread_mutex_lock (&mutex);
-    if (work_thread)
+
+    if (is_working)
         goto exit;
 
     argv = malloc (sizeof (char *) * 2);
@@ -105,7 +108,14 @@ native_start_service (JNIEnv *env, jobject thiz, jstring config_path)
     argv[1] = strdup ((const char *)bytes);
     (*env)->ReleaseStringUTFChars (env, config_path, (const char *)bytes);
 
-    pthread_create (&work_thread, NULL, thread_handler, argv);
+    res = pthread_create (&work_thread, NULL, thread_handler, argv);
+    if (res < 0) {
+        free (argv[1]);
+        free (argv);
+        goto exit;
+    }
+
+    is_working = 1;
 exit:
     pthread_mutex_unlock (&mutex);
 }
@@ -114,12 +124,14 @@ static void
 native_stop_service (JNIEnv *env, jobject thiz)
 {
     pthread_mutex_lock (&mutex);
-    if (!work_thread)
+
+    if (!is_working)
         goto exit;
 
     quit ();
     pthread_join (work_thread, NULL);
-    work_thread = 0;
+
+    is_working = 0;
 exit:
     pthread_mutex_unlock (&mutex);
 }
