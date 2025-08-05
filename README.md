@@ -109,11 +109,27 @@ dns:
 
 ### Run
 
+#### Linux
+
 ```bash
 # Capabilities
 setcap cap_net_admin,cap_net_bind_service+ep bin/hev-socks5-tproxy
 
 bin/hev-socks5-tproxy conf/main.yml
+```
+
+#### OpenWrt 24.10+
+
+Repo: https://github.com/openwrt/packages/tree/master/net/hev-socks5-tproxy
+
+```sh
+# Install package
+opkg install hev-socks5-tproxy
+
+# Edit /etc/config/hev-socks5-tproxy
+
+# Restart service
+/etc/init.d/hev-socks5-tproxy restart
 ```
 
 ### Redirect rules
