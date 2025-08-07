@@ -1,6 +1,6 @@
 # HevSocks5TProxy
 
-[![status](https://github.com/heiher/hev-socks5-tproxy/actions/workflows/build.yaml/badge.svg?branch=master&event=push)](https://github.com/heiher/hev-socks5-tproxy)
+[![status](https://github.com/heiher/hev-socks5-tproxy/actions/workflows/build.yaml/badge.svg?branch=main&event=push)](https://github.com/heiher/hev-socks5-tproxy)
 
 HevSocks5TProxy is a simple, lightweight transparent proxy for Linux.
 
@@ -296,4 +296,4 @@ ip6tables -t mangle -A OUTPUT -p udp -j MARK --set-mark 1088
 
 MIT
 
-[^1]: See [protocol specification](https://github.com/heiher/hev-socks5-core/tree/master?tab=readme-ov-file#udp-in-tcp). The [hev-socks5-server](https://github.com/heiher/hev-socks5-server) supports UDP relay over TCP.
+[^1]: See [protocol specification](https://github.com/heiher/hev-socks5-core/tree/main?tab=readme-ov-file#udp-in-tcp). The [hev-socks5-server](https://github.com/heiher/hev-socks5-server) supports UDP relay over TCP.
