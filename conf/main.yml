@@ -50,7 +50,7 @@ dns:
    # udp recv buffer size (bytes)
 #  udp-recv-buffer-size: 1048576
    # connect timeout (ms)
-#  connect-timeout: 5000
+#  connect-timeout: 10000
    # read-write timeout (ms)
 #  read-write-timeout: 300000
    # stdout, stderr or file-path
