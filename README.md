@@ -102,7 +102,7 @@ dns:
 #misc:
 #  task-stack-size: 16384 # task stack size (bytes)
 #  connect-timeout: 5000 # connect timeout (ms)
-#  read-write-timeout: 60000 # read-write timeout (ms)
+#  read-write-timeout: 300000 # read-write timeout (ms)
 #  log-file: stderr # stdout or file-path
 #  log-level: warn # debug, info or error
 #  pid-file: /run/hev-socks5-tproxy.pid
