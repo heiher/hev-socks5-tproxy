@@ -63,10 +63,13 @@ ndk-build
 
 ```yaml
 main:
+  # Worker threads
   workers: 1
 
 socks5:
+  # Socks5 server port
   port: 1080
+  # Socks5 server address
   address: 127.0.0.1
   # Socks5 UDP relay mode (tcp|udp)
   udp: 'udp'
@@ -82,11 +85,15 @@ socks5:
   mark: 0x438
 
 tcp:
+  # TCP port
   port: 1088
+  # TCP address
   address: '::'
 
 udp:
+  # UDP port
   port: 1088
+  # UDP address
   address: '::'
 
 # Proxy DNS for bridged mode
@@ -100,12 +107,21 @@ dns:
   upstream: 127.0.0.1
 
 #misc:
-#  task-stack-size: 16384 # task stack size (bytes)
-#  connect-timeout: 10000 # connect timeout (ms)
-#  read-write-timeout: 300000 # read-write timeout (ms)
-#  log-file: stderr # stdout or file-path
-#  log-level: warn # debug, info or error
+   # task stack size (bytes)
+#  task-stack-size: 16384
+   # udp recv buffer size (bytes)
+#  udp-recv-buffer-size: 1048576
+   # connect timeout (ms)
+#  connect-timeout: 10000
+   # read-write timeout (ms)
+#  read-write-timeout: 300000
+   # stdout, stderr or file-path
+#  log-file: stderr
+   # debug, info, warn or error
+#  log-level: warn
+   # If present, run as a daemon with this pid file
 #  pid-file: /run/hev-socks5-tproxy.pid
+   # If present, set rlimit nofile; else use default value
 #  limit-nofile: 65535
 ```
 
