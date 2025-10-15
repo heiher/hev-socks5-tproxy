@@ -49,6 +49,8 @@ dns:
 # task-stack-size: 16384
   # udp recv buffer size (bytes)
 # udp-recv-buffer-size: 1048576
+  # number of udp buffers in splice, 1500 bytes per buffer.
+# udp-copy-buffer-nums: 10
   # connect timeout (ms)
 # connect-timeout: 10000
   # TCP read-write timeout (ms)
