@@ -16,11 +16,11 @@ socks5:
   # Socks5 handshake using pipeline mode
 # pipeline: false
   # Socks5 server username
-  username: 'username'
+# username: 'username'
   # Socks5 server password
-  password: 'password'
+# password: 'password'
   # Socket mark
-  mark: 0
+# mark: 0
 
 tcp:
   # TCP port
