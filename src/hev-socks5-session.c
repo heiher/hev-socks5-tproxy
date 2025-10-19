@@ -21,17 +21,11 @@ hev_socks5_session_run (HevTProxySession *base)
 {
     HevSocks5SessionIface *iface;
     HevConfigServer *srv;
-    int read_write_timeout;
-    int connect_timeout;
     int res;
 
     LOG_D ("%p socks5 session run", base);
 
     srv = hev_config_get_socks5_server ();
-    connect_timeout = hev_config_get_misc_connect_timeout ();
-    read_write_timeout = hev_config_get_misc_read_write_timeout ();
-
-    hev_socks5_set_timeout (HEV_SOCKS5 (base), connect_timeout);
 
     res = hev_socks5_client_connect (HEV_SOCKS5_CLIENT (base), srv->addr,
                                      srv->port);
@@ -39,8 +33,6 @@ hev_socks5_session_run (HevTProxySession *base)
         LOG_E ("%p socks5 session connect", base);
         return;
     }
-
-    hev_socks5_set_timeout (HEV_SOCKS5 (base), read_write_timeout);
 
     if (srv->user && srv->pass) {
         hev_socks5_client_set_auth (HEV_SOCKS5_CLIENT (base), srv->user,
