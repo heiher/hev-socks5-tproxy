@@ -7,6 +7,7 @@
  ============================================================================
  */
 
+#define _GNU_SOURCE
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -179,12 +180,10 @@ hev_socks5_udp_recvmsg (HevSocks5Worker *self, int fd, struct sockaddr *saddr,
         char buf[CMSG_SPACE (sizeof (struct sockaddr_in6))];
         struct cmsghdr align;
     } u;
-    struct msghdr mh = { 0 };
+    struct msghdr mh;
     struct iovec iov;
     int res;
 
-    iov.iov_base = buf;
-    iov.iov_len = len;
     mh.msg_iov = &iov;
     mh.msg_iovlen = 1;
     mh.msg_name = saddr;
@@ -192,11 +191,49 @@ hev_socks5_udp_recvmsg (HevSocks5Worker *self, int fd, struct sockaddr *saddr,
     mh.msg_control = u.buf;
     mh.msg_controllen = sizeof (u.buf);
 
+    iov.iov_base = buf;
+    iov.iov_len = len;
+
     res = hev_task_io_socket_recvmsg (fd, &mh, 0, task_io_yielder, self);
-    if (res < 0)
+    if (res <= 0)
         return res;
 
     msg_to_sock_addr (&mh, daddr);
+
+    return res;
+}
+
+static int
+_hev_socks5_udp_recvmmsg (HevSocks5Worker *self, int fd,
+                          struct sockaddr_in6 *saddr,
+                          struct sockaddr_in6 *daddr, struct iovec *iov,
+                          int num)
+{
+    union
+    {
+        char buf[CMSG_SPACE (sizeof (struct sockaddr_in6))];
+        struct cmsghdr align;
+    } u[num];
+    struct mmsghdr msgv[num];
+    int i, res;
+
+    for (i = 0; i < num; i++) {
+        msgv[i].msg_hdr.msg_iov = &iov[i];
+        msgv[i].msg_hdr.msg_iovlen = 1;
+        msgv[i].msg_hdr.msg_name = &saddr[i];
+        msgv[i].msg_hdr.msg_namelen = sizeof (struct sockaddr_in6);
+        msgv[i].msg_hdr.msg_control = u[i].buf;
+        msgv[i].msg_hdr.msg_controllen = sizeof (u[i].buf);
+    }
+
+    res = hev_task_io_socket_recvmmsg (fd, msgv, num, 0, task_io_yielder, self);
+    if (res <= 0)
+        return res;
+
+    for (i = 0; i < res; i++) {
+        msg_to_sock_addr (&msgv[i].msg_hdr, (struct sockaddr *)&daddr[i]);
+        iov[i].iov_len = msgv[i].msg_len;
+    }
 
     return res;
 }
@@ -318,7 +355,7 @@ hev_socks5_udp_task_entry (void *data)
     HevRBTreeNode *node;
     const char *addr;
     const char *port;
-    int fd;
+    int fd, num;
 
     LOG_D ("socks5 udp task run");
 
@@ -331,33 +368,52 @@ hev_socks5_udp_task_entry (void *data)
     if (fd < 0)
         goto exit;
 
+    num = hev_config_get_misc_udp_copy_buffer_nums ();
     hev_task_add_fd (hev_task_self (), fd, POLLIN);
 
-    for (;;) {
-        struct sockaddr_in6 saddr = { 0 };
-        struct sockaddr_in6 daddr = { 0 };
-        struct sockaddr *sap;
-        struct sockaddr *dap;
-        void *buf;
-        int res;
+    {
+        struct iovec iov[num];
+        int i;
 
-        buf = hev_malloc (UDP_BUF_SIZE);
-        sap = (struct sockaddr *)&saddr;
-        dap = (struct sockaddr *)&daddr;
+        for (i = 0; i < num; i++)
+            iov[i].iov_base = NULL;
 
-        res = hev_socks5_udp_recvmsg (self, fd, sap, dap, buf, UDP_BUF_SIZE);
-        if (res == -1 || res == 0) {
-            LOG_W ("socks5 udp recvmsg");
-            hev_free (buf);
-            continue;
-        } else if (res < 0) {
-            hev_free (buf);
-            break;
+        for (;;) {
+            struct sockaddr_in6 saddr[num];
+            struct sockaddr_in6 daddr[num];
+            int res;
+
+            for (i = 0; i < num; i++) {
+                if (!iov[i].iov_base) {
+                    iov[i].iov_base = hev_malloc (UDP_BUF_SIZE);
+                    iov[i].iov_len = UDP_BUF_SIZE;
+                }
+            }
+
+            res = _hev_socks5_udp_recvmmsg (self, fd, saddr, daddr, iov, num);
+            if (res == -1 || res == 0) {
+                LOG_W ("socks5 udp recvmmsg");
+                continue;
+            } else if (res < 0) {
+                break;
+            }
+
+            for (i = 0; i < res; i++) {
+                struct sockaddr *sap = (struct sockaddr *)&saddr[i];
+                struct sockaddr *dap = (struct sockaddr *)&daddr[i];
+                int ret;
+
+                ret = hev_socks5_udp_dispatch (self, sap, dap, iov[i].iov_base,
+                                               iov[i].iov_len);
+                if (ret >= 0)
+                    iov[i].iov_base = NULL;
+            }
         }
 
-        res = hev_socks5_udp_dispatch (self, sap, dap, buf, res);
-        if (res < 0)
-            hev_free (buf);
+        for (i = 0; i < num; i++) {
+            if (iov[i].iov_base)
+                hev_free (iov[i].iov_base);
+        }
     }
 
     node = hev_rbtree_first (&self->udp_set);
