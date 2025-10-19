@@ -82,7 +82,7 @@ socks5:
   # Socks5 server password
   password: 'password'
   # Socket mark
-  mark: 0x438
+  mark: 0
 
 tcp:
   # TCP port
@@ -107,22 +107,22 @@ dns:
   upstream: 127.0.0.1
 
 #misc:
-   # task stack size (bytes)
-#  task-stack-size: 16384
-   # udp recv buffer size (bytes)
-#  udp-recv-buffer-size: 1048576
-   # connect timeout (ms)
-#  connect-timeout: 10000
-   # read-write timeout (ms)
-#  read-write-timeout: 300000
-   # stdout, stderr or file-path
-#  log-file: stderr
-   # debug, info, warn or error
-#  log-level: warn
-   # If present, run as a daemon with this pid file
-#  pid-file: /run/hev-socks5-tproxy.pid
-   # If present, set rlimit nofile; else use default value
-#  limit-nofile: 65535
+  # task stack size (bytes)
+# task-stack-size: 16384
+  # udp recv buffer size (bytes)
+# udp-recv-buffer-size: 1048576
+  # connect timeout (ms)
+# connect-timeout: 10000
+  # read-write timeout (ms)
+# read-write-timeout: 300000
+  # stdout, stderr or file-path
+# log-file: stderr
+  # debug, info, warn or error
+# log-level: warn
+  # If present, run as a daemon with this pid file
+# pid-file: /run/hev-socks5-tproxy.pid
+  # If present, set rlimit nofile; else use default value
+# limit-nofile: 65535
 ```
 
 ### Run
