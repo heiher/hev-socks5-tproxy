@@ -25,7 +25,7 @@ static char dns_port[8];
 
 static char log_file[1024];
 static char pid_file[1024];
-static int task_stack_size = 16384;
+static int task_stack_size = 20480;
 static int udp_recv_buffer_size = 1048576;
 static int udp_copy_buffer_nums = 10;
 static int connect_timeout = 10000;

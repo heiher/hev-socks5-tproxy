@@ -209,8 +209,6 @@ hev_tsocks_cache_update (HevTSock *ts)
 int
 hev_tsocks_cache_get (struct sockaddr *addr)
 {
-    LOG_D ("tsocks cache get");
-
     for (;;) {
         HevTSock *ts;
         int res;
@@ -255,7 +253,5 @@ hev_tsocks_cache_get (struct sockaddr *addr)
 void
 hev_tsocks_cache_put (int fd)
 {
-    LOG_D ("tsocks cache put");
-
     pthread_rwlock_unlock (&rwlock);
 }

@@ -108,7 +108,7 @@ dns:
 
 #misc:
   # task stack size (bytes)
-# task-stack-size: 16384
+# task-stack-size: 20480
   # udp recv buffer size (bytes)
 # udp-recv-buffer-size: 1048576
   # number of udp buffers in splice, 1500 bytes per buffer.
