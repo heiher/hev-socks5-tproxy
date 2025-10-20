@@ -7,6 +7,7 @@
  ============================================================================
  */
 
+#define _GNU_SOURCE
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
@@ -103,15 +104,16 @@ static int
 hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self, unsigned int num)
 {
     char buf[UDP_BUF_SIZE * num];
-    HevSocks5UDPMsg msgv[num];
+    HevSocks5UDPMsg smv[num];
     int i, res;
+    int s = 0;
 
     for (i = 0; i < num; i++) {
-        msgv[i].buf = buf + UDP_BUF_SIZE * i;
-        msgv[i].len = UDP_BUF_SIZE;
+        smv[i].buf = buf + UDP_BUF_SIZE * i;
+        smv[i].len = UDP_BUF_SIZE;
     }
 
-    res = hev_socks5_udp_recvmmsg (HEV_SOCKS5_UDP (self), msgv, num, 1);
+    res = hev_socks5_udp_recvmmsg (HEV_SOCKS5_UDP (self), smv, num, 1);
     if (res <= 0) {
         if (res == -1 && errno == EAGAIN)
             return 0;
@@ -119,12 +121,32 @@ hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self, unsigned int num)
         return -1;
     }
 
-    for (i = 0; i < res; i++) {
+    while (s < res) {
         struct sockaddr_in6 saddr;
-        int ret, fd, family;
+        struct mmsghdr dmv[res];
+        struct iovec iov[res];
+        int fd, f, n, r;
 
-        ret = hev_socks5_addr_into_sockaddr6 (msgv[i].addr, &saddr, &family);
-        if (ret < 0) {
+        for (i = s, n = 0; i < res; i++) {
+            dmv[n].msg_hdr.msg_name = &self->addr;
+            dmv[n].msg_hdr.msg_namelen = sizeof (self->addr);
+            dmv[n].msg_hdr.msg_controllen = 0;
+            dmv[n].msg_hdr.msg_iov = &iov[n];
+            dmv[n].msg_hdr.msg_iovlen = 1;
+            iov[n].iov_base = smv[i].buf;
+            iov[n].iov_len = smv[i].len;
+
+            if (n++ == 0)
+                continue;
+
+            r = hev_socks5_addr_len (smv[i].addr);
+            r = memcmp (smv[0].addr, smv[i].addr, r);
+            if (r)
+                break;
+        }
+
+        r = hev_socks5_addr_into_sockaddr6 (smv[s].addr, &saddr, &f);
+        if (r < 0) {
             LOG_D ("%p socks5 session udp fwd b addr", self);
             return -1;
         }
@@ -135,13 +157,15 @@ hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self, unsigned int num)
             return -1;
         }
 
-        ret = sendto (fd, msgv[i].buf, msgv[i].len, 0,
-                      (struct sockaddr *)&self->addr, sizeof (self->addr));
+        f = MSG_DONTWAIT | MSG_WAITALL;
+        r = hev_task_io_socket_sendmmsg (fd, dmv, n, f, NULL, NULL);
         hev_tsocks_cache_put (fd);
-        if (ret <= 0) {
+        if (r <= 0) {
             LOG_D ("%p socks5 session udp fwd b send", self);
             return -1;
         }
+
+        s += n;
     }
 
     return 1;
