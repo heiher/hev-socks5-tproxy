@@ -30,7 +30,7 @@ hev_socks5_session_run (HevTProxySession *base)
     res = hev_socks5_client_connect (HEV_SOCKS5_CLIENT (base), srv->addr,
                                      srv->port);
     if (res < 0) {
-        LOG_E ("%p socks5 session connect", base);
+        LOG_I ("%p socks5 session connect", base);
         return;
     }
 
@@ -42,7 +42,7 @@ hev_socks5_session_run (HevTProxySession *base)
 
     res = hev_socks5_client_handshake (HEV_SOCKS5_CLIENT (base), srv->pipeline);
     if (res < 0) {
-        LOG_E ("%p socks5 session handshake", base);
+        LOG_I ("%p socks5 session handshake", base);
         return;
     }
 
