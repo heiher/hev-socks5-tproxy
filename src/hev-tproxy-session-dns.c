@@ -152,6 +152,8 @@ hev_tproxy_session_dns_bind (HevTProxySessionDNS *self, int fd)
             return -1;
     }
 
+    set_sock_tcp_fastopen (fd, srv->fastopen);
+
     return 0;
 }
 

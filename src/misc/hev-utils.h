@@ -18,5 +18,6 @@ int set_sock_mark (int fd, unsigned int mark);
 void msg_to_sock_addr (struct msghdr *msg, struct sockaddr *addr);
 int resolve_to_sockaddr (const char *addr, const char *port, int type,
                          struct sockaddr_in6 *saddr);
+void set_sock_tcp_fastopen (int fd, int enable);
 
 #endif /* __HEV_UTILS_H__ */

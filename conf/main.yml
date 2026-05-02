@@ -21,6 +21,8 @@ socks5:
 # password: 'password'
   # Socket mark
 # mark: 0
+  # TCP fastopen
+# tcp-fastopen: false
 
 tcp:
   # TCP port

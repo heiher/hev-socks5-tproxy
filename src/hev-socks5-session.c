@@ -9,9 +9,9 @@
 
 #include <string.h>
 
+#include "hev-utils.h"
 #include "hev-logger.h"
 #include "hev-config.h"
-
 #include "hev-socks5-client.h"
 
 #include "hev-socks5-session.h"
@@ -48,6 +48,30 @@ hev_socks5_session_run (HevTProxySession *base)
 
     iface = HEV_OBJECT_GET_IFACE (base, HEV_SOCKS5_SESSION_TYPE);
     iface->splicer (HEV_SOCKS5_SESSION (base));
+}
+
+int
+hev_socks5_session_bind (HevSocks5 *self, int fd, const struct sockaddr *dest)
+{
+    HevConfigServer *srv;
+    unsigned int mark;
+
+    LOG_D ("%p socks5 session bind", self);
+
+    srv = hev_config_get_socks5_server ();
+    mark = srv->mark;
+
+    if (mark) {
+        int res;
+
+        res = set_sock_mark (fd, mark);
+        if (res < 0)
+            return -1;
+    }
+
+    set_sock_tcp_fastopen (fd, srv->fastopen);
+
+    return 0;
 }
 
 void *

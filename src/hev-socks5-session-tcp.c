@@ -15,7 +15,6 @@
 #include <hev-socks5-client-tcp.h>
 #include <hev-memory-allocator.h>
 
-#include "hev-utils.h"
 #include "hev-config.h"
 #include "hev-logger.h"
 
@@ -40,27 +39,6 @@ hev_socks5_session_tcp_new (struct sockaddr_in6 *addr, int fd)
     LOG_D ("%p socks5 session tcp new", self);
 
     return self;
-}
-
-static int
-hev_socks5_session_tcp_bind (HevSocks5 *self, int fd,
-                             const struct sockaddr *dest)
-{
-    HevConfigServer *srv;
-
-    LOG_D ("%p socks5 session tcp bind", self);
-
-    srv = hev_config_get_socks5_server ();
-
-    if (srv->mark) {
-        int res;
-
-        res = set_sock_mark (fd, srv->mark);
-        if (res < 0)
-            return -1;
-    }
-
-    return 0;
 }
 
 static void
@@ -158,7 +136,7 @@ hev_socks5_session_tcp_class (void)
         okptr->iface = hev_socks5_session_tcp_iface;
 
         skptr = HEV_SOCKS5_CLASS (kptr);
-        skptr->binder = hev_socks5_session_tcp_bind;
+        skptr->binder = hev_socks5_session_bind;
 
         siptr = &kptr->session;
         memcpy (siptr, HEV_SOCKS5_SESSION_TYPE, sizeof (HevSocks5SessionIface));

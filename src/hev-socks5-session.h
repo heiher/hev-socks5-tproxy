@@ -28,4 +28,7 @@ struct _HevSocks5SessionIface
 
 void *hev_socks5_session_iface (void);
 
+int hev_socks5_session_bind (HevSocks5 *self, int fd,
+                             const struct sockaddr *dest);
+
 #endif /* __HEV_SOCKS5_SESSION_H__ */

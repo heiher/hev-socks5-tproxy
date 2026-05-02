@@ -12,6 +12,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/resource.h>
+#include <netinet/tcp.h>
 
 #include <hev-task-dns.h>
 
@@ -70,6 +71,19 @@ set_sock_mark (int fd, unsigned int mark)
     return setsockopt (fd, SOL_SOCKET, SO_USER_COOKIE, &mark, sizeof (mark));
 #endif
     return 0;
+}
+
+void
+set_sock_tcp_fastopen (int fd, int enable)
+{
+#ifdef __linux__
+    int one = 1;
+
+    if (!enable)
+        return;
+
+    setsockopt (fd, IPPROTO_TCP, TCP_FASTOPEN_CONNECT, &one, sizeof (one));
+#endif
 }
 
 void
