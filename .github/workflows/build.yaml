@@ -18,7 +18,7 @@ jobs:
       BRANCH_NAME: ${{ github.base_ref || github.ref_name }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: true
@@ -30,7 +30,7 @@ jobs:
           echo ${REV_ID} > hev-socks5-tproxy-${{ env.BRANCH_NAME }}/.rev-id
           tar cJf hev-socks5-tproxy-${{ env.BRANCH_NAME }}.tar.xz hev-socks5-tproxy-${{ env.BRANCH_NAME }}
       - name: Upload source
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hev-socks5-tproxy-${{ env.BRANCH_NAME }}.tar.xz
           path: hev-socks5-tproxy-${{ env.BRANCH_NAME }}.tar.xz
@@ -99,7 +99,7 @@ jobs:
             tool: x86_64-unknown-linux-musl
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: true
@@ -111,7 +111,7 @@ jobs:
           make CROSS_PREFIX=/opt/x-tools/${{ matrix.tool }}/bin/${{ matrix.tool }}- CFLAGS=${{ matrix.env.CFLAGS }} ENABLE_STATIC=1 -j`nproc`
           cp bin/hev-socks5-tproxy hev-socks5-tproxy-linux-${{ matrix.name }}
       - name: Upload ${{ matrix.name }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hev-socks5-tproxy-linux-${{ matrix.name }}
           path: hev-socks5-tproxy-linux-${{ matrix.name }}
@@ -127,11 +127,11 @@ jobs:
     if: github.event_name == 'release'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release
           pattern: "hev-*"
@@ -150,7 +150,7 @@ jobs:
     if: github.event_name != 'release'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: true
@@ -169,7 +169,7 @@ jobs:
     if: github.event_name != 'release'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: true
