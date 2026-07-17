@@ -207,19 +207,19 @@ table inet mangle {
 
     chain prerouting {
         type filter hook prerouting priority mangle; policy accept;
-        meta mark 0x438 return
+        meta mark & 0x7ff == 0x438 return
         ip daddr @byp4 return
         ip6 daddr @byp6 return
-        meta l4proto { tcp, udp } tproxy to :1088 meta mark set 0x440 accept
+        meta l4proto { tcp, udp } tproxy to :1088 meta mark set meta mark & 0xffff8440 accept
     }
 
     # Only for local mode
     chain output {
         type route hook output priority mangle; policy accept;
-        meta mark 0x438 return
+        meta mark & 0x7ff == 0x438 return
         ip daddr @byp4 return
         ip6 daddr @byp6 return
-        meta l4proto { tcp, udp } meta mark set 0x440
+        meta l4proto { tcp, udp } meta mark set meta mark & 0xffff8440
     }
 }
 ```
@@ -227,10 +227,10 @@ table inet mangle {
 ##### Routing
 
 ```bash
-ip rule add fwmark 1088 table 100
+ip rule add fwmark 1088/0x7ff table 100
 ip route add local default dev lo table 100
 
-ip -6 rule add fwmark 1088 table 100
+ip -6 rule add fwmark 1088/0x7ff table 100
 ip -6 route add local default dev lo table 100
 ```
 
@@ -279,34 +279,34 @@ Gateway and Local modes
 
 ```bash
 # IPv4
-iptables -t mangle -A PREROUTING -m mark --mark 0x438 -j RETURN
+iptables -t mangle -A PREROUTING -m mark --mark 0x438/0x7ff -j RETURN
 iptables -t mangle -A PREROUTING -m set --match-set byp4 dst -j RETURN
-iptables -t mangle -A PREROUTING -p tcp -j TPROXY --on-port 1088 --tproxy-mark 1088
-iptables -t mangle -A PREROUTING -p udp -j TPROXY --on-port 1088 --tproxy-mark 1088
+iptables -t mangle -A PREROUTING -p tcp -j TPROXY --on-port 1088 --tproxy-mark 1088/0x7ff
+iptables -t mangle -A PREROUTING -p udp -j TPROXY --on-port 1088 --tproxy-mark 1088/0x7ff
 
-ip rule add fwmark 1088 table 100
+ip rule add fwmark 1088/0x7ff table 100
 ip route add local default dev lo table 100
 
 # Only for local mode
-iptables -t mangle -A OUTPUT -m mark --mark 0x438 -j RETURN
+iptables -t mangle -A OUTPUT -m mark --mark 0x438/0x7ff -j RETURN
 iptables -t mangle -A OUTPUT -m set --match-set byp4 dst -j RETURN
-iptables -t mangle -A OUTPUT -p tcp -j MARK --set-mark 1088
-iptables -t mangle -A OUTPUT -p udp -j MARK --set-mark 1088
+iptables -t mangle -A OUTPUT -p tcp -j MARK --set-mark 1088/0x7ff
+iptables -t mangle -A OUTPUT -p udp -j MARK --set-mark 1088/0x7ff
 
 # IPv6
-ip6tables -t mangle -A PREROUTING -m mark --mark 0x438 -j RETURN
+ip6tables -t mangle -A PREROUTING -m mark --mark 0x438/0x7ff -j RETURN
 ip6tables -t mangle -A PREROUTING -m set --match-set byp6 dst -j RETURN
-ip6tables -t mangle -A PREROUTING -p tcp -j TPROXY --on-port 1088 --tproxy-mark 1088
-ip6tables -t mangle -A PREROUTING -p udp -j TPROXY --on-port 1088 --tproxy-mark 1088
+ip6tables -t mangle -A PREROUTING -p tcp -j TPROXY --on-port 1088 --tproxy-mark 1088/0x7ff
+ip6tables -t mangle -A PREROUTING -p udp -j TPROXY --on-port 1088 --tproxy-mark 1088/0x7ff
 
-ip -6 rule add fwmark 1088 table 100
+ip -6 rule add fwmark 1088/0x7ff table 100
 ip -6 route add local default dev lo table 100
 
 # Only for local mode
-ip6tables -t mangle -A OUTPUT -m mark --mark 0x438 -j RETURN
+ip6tables -t mangle -A OUTPUT -m mark --mark 0x438/0x7ff -j RETURN
 ip6tables -t mangle -A OUTPUT -m set --match-set byp6 dst -j RETURN
-ip6tables -t mangle -A OUTPUT -p tcp -j MARK --set-mark 1088
-ip6tables -t mangle -A OUTPUT -p udp -j MARK --set-mark 1088
+ip6tables -t mangle -A OUTPUT -p tcp -j MARK --set-mark 1088/0x7ff
+ip6tables -t mangle -A OUTPUT -p udp -j MARK --set-mark 1088/0x7ff
 ```
 
 ## Contributors
