@@ -10,6 +10,7 @@
 #if defined(ANDROID)
 #include <jni.h>
 #include <pthread.h>
+#include <stdatomic.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,20 +33,23 @@
 #define STR_ARG(c) #c
 #define N_ELEMENTS(arr) (sizeof (arr) / sizeof ((arr)[0]))
 
-static int is_working;
+static atomic_int is_running;
+static int thread_joinable;
 static JavaVM *java_vm;
 static pthread_t work_thread;
 static pthread_mutex_t mutex;
 static pthread_key_t current_jni_env;
 
-static void native_start_service (JNIEnv *env, jobject thiz,
-                                  jstring conig_path);
-static void native_stop_service (JNIEnv *env, jobject thiz);
+static jboolean native_start_service (JNIEnv *env, jobject thiz,
+                                      jstring conig_path);
+static jboolean native_stop_service (JNIEnv *env, jobject thiz);
+static jboolean native_is_running (JNIEnv *env, jobject thiz);
 
 static JNINativeMethod native_methods[] = {
-    { "TProxyStartService", "(Ljava/lang/String;)V",
+    { "TProxyStartService", "(Ljava/lang/String;)Z",
       (void *)native_start_service },
-    { "TProxyStopService", "()V", (void *)native_stop_service },
+    { "TProxyStopService", "()Z", (void *)native_stop_service },
+    { "TProxyIsRunning", "()Z", (void *)native_is_running },
 };
 
 static void
@@ -85,55 +89,90 @@ thread_handler (void *data)
 
     main (2, argv);
 
+    atomic_store_explicit (&is_running, 0, memory_order_release);
+
     free (argv[1]);
     free (argv);
 
     return NULL;
 }
 
-static void
+static jboolean
 native_start_service (JNIEnv *env, jobject thiz, jstring config_path)
 {
     const jbyte *bytes;
     char **argv;
     int res;
+    jboolean result = JNI_FALSE;
 
     pthread_mutex_lock (&mutex);
 
-    if (is_working)
+    if (atomic_load_explicit (&is_running, memory_order_acquire))
         goto exit;
 
+    if (thread_joinable) {
+        pthread_join (work_thread, NULL);
+        thread_joinable = 0;
+    }
+
     argv = malloc (sizeof (char *) * 2);
+    if (!argv)
+        goto exit;
+
     bytes = (const jbyte *)(*env)->GetStringUTFChars (env, config_path, NULL);
+    if (!bytes) {
+        free (argv);
+        goto exit;
+    }
     argv[1] = strdup ((const char *)bytes);
     (*env)->ReleaseStringUTFChars (env, config_path, (const char *)bytes);
+    if (!argv[1]) {
+        free (argv);
+        goto exit;
+    }
 
+    atomic_store_explicit (&is_running, 1, memory_order_release);
     res = pthread_create (&work_thread, NULL, thread_handler, argv);
     if (res != 0) {
+        atomic_store_explicit (&is_running, 0, memory_order_release);
         free (argv[1]);
         free (argv);
         goto exit;
     }
 
-    is_working = 1;
+    thread_joinable = 1;
+    result = JNI_TRUE;
 exit:
     pthread_mutex_unlock (&mutex);
+    return result;
 }
 
-static void
+static jboolean
 native_stop_service (JNIEnv *env, jobject thiz)
 {
+    int res = 0;
+
     pthread_mutex_lock (&mutex);
 
-    if (!is_working)
+    if (!thread_joinable)
         goto exit;
 
-    quit ();
-    pthread_join (work_thread, NULL);
+    if (atomic_load_explicit (&is_running, memory_order_acquire))
+        quit ();
+    res = pthread_join (work_thread, NULL);
 
-    is_working = 0;
+    thread_joinable = 0;
+    atomic_store_explicit (&is_running, 0, memory_order_release);
 exit:
     pthread_mutex_unlock (&mutex);
+    return res == 0 ? JNI_TRUE : JNI_FALSE;
+}
+
+static jboolean
+native_is_running (JNIEnv *env, jobject thiz)
+{
+    return atomic_load_explicit (&is_running, memory_order_acquire) ? JNI_TRUE :
+                                                                      JNI_FALSE;
 }
 
 #endif
