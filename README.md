@@ -309,6 +309,28 @@ ip6tables -t mangle -A OUTPUT -p tcp -j MARK --set-mark 1088/0x7ff
 ip6tables -t mangle -A OUTPUT -p udp -j MARK --set-mark 1088/0x7ff
 ```
 
+## API
+
+### Java
+
+```java
+public class TProxyService {
+    private static native boolean TProxyStartService(String config_path);
+    private static native boolean TProxyStopService();
+    private static native boolean TProxyIsRunning();
+
+    static {
+        System.loadLibrary("hev-socks5-tproxy");
+    }
+}
+```
+
+Allow overriding the package and class names in `Application.mk`.
+
+```makefile
+APP_CFLAGS := -DPKGNAME=hev/htproxy -DCLSNAME=TProxyService
+```
+
 ## Contributors
 
 * **hev** - https://hev.cc
