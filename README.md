@@ -210,7 +210,7 @@ table inet mangle {
         meta mark & 0x7ff == 0x438 return
         ip daddr @byp4 return
         ip6 daddr @byp6 return
-        meta l4proto { tcp, udp } tproxy to :1088 meta mark set meta mark & 0xffff8440 accept
+        meta l4proto { tcp, udp } tproxy to :1088 meta mark set meta mark & 0xfffff800 | 0x440 accept
     }
 
     # Only for local mode
@@ -219,7 +219,7 @@ table inet mangle {
         meta mark & 0x7ff == 0x438 return
         ip daddr @byp4 return
         ip6 daddr @byp6 return
-        meta l4proto { tcp, udp } meta mark set meta mark & 0xffff8440
+        meta l4proto { tcp, udp } meta mark set meta mark & 0xfffff800 | 0x440
     }
 }
 ```
