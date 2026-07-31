@@ -110,12 +110,6 @@ work_thread_handler (void *data)
         goto exit;
     }
 
-    res = hev_socks5_worker_init (*worker, 0);
-    if (res < 0) {
-        LOG_E ("socks5 tproxy worker init");
-        goto free;
-    }
-
     hev_socks5_worker_start (*worker);
 
     hev_task_system_run ();
@@ -123,7 +117,6 @@ work_thread_handler (void *data)
     hev_socks5_worker_destroy (*worker);
     *worker = NULL;
 
-free:
     hev_task_system_fini ();
 exit:
     return NULL;
@@ -132,27 +125,20 @@ exit:
 void
 hev_socks5_tproxy_run (void)
 {
-    int res;
     int i;
 
     LOG_D ("socks5 tproxy run");
 
-    worker_list[0] = hev_socks5_worker_new ();
+    worker_list[0] = hev_socks5_worker_new (1);
     if (!worker_list[0]) {
         LOG_E ("socks5 tproxy worker");
-        return;
-    }
-
-    res = hev_socks5_worker_init (worker_list[0], 1);
-    if (res < 0) {
-        LOG_E ("socks5 tproxy worker init");
         return;
     }
 
     hev_socks5_worker_start (worker_list[0]);
 
     for (i = 1; i < workers; i++) {
-        worker_list[i] = hev_socks5_worker_new ();
+        worker_list[i] = hev_socks5_worker_new (0);
         if (!worker_list[i]) {
             LOG_E ("socks5 tproxy worker");
             return;

@@ -12,6 +12,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <sys/ioctl.h>
 
 #include <hev-task.h>
 #include <hev-task-io.h>
@@ -36,9 +37,10 @@ static pthread_once_t key_once = PTHREAD_ONCE_INIT;
 
 struct _HevSocks5Worker
 {
-    int quit;
-    int is_main;
     int event_fds[2];
+
+    int run;
+    int is_main;
 
     HevTask *task_tcp;
     HevTask *task_udp;
@@ -63,7 +65,7 @@ task_io_yielder (HevTaskYieldType type, void *data)
 
     hev_task_yield (type);
 
-    return self->quit ? -1 : 0;
+    return READ_ONCE (self->run) ? 0 : -1;
 }
 
 static HevSocks5Worker *
@@ -511,18 +513,13 @@ exit:
 static void
 hev_socks5_event_task_entry (void *data)
 {
+    HevTask *task = hev_task_self ();
     HevSocks5Worker *self = data;
     int res;
 
     LOG_D ("socks5 event task run");
 
-    res = hev_task_io_pipe_pipe (self->event_fds);
-    if (res < 0) {
-        LOG_E ("socks5 proxy pipe");
-        return;
-    }
-
-    hev_task_add_fd (hev_task_self (), self->event_fds[0], POLLIN);
+    hev_task_add_fd (task, self->event_fds[0], POLLIN);
 
     for (;;) {
         char val;
@@ -535,7 +532,7 @@ hev_socks5_event_task_entry (void *data)
         break;
     }
 
-    self->quit = 1;
+    WRITE_ONCE (self->run, 0);
 
     if (self->task_tcp)
         hev_task_wakeup (self->task_tcp);
@@ -544,16 +541,17 @@ hev_socks5_event_task_entry (void *data)
     if (self->task_dns)
         hev_task_wakeup (self->task_dns);
 
-    close (self->event_fds[0]);
-    close (self->event_fds[1]);
+    hev_task_del_fd (task, self->event_fds[0]);
 }
 
 HevSocks5Worker *
-hev_socks5_worker_new (void)
+hev_socks5_worker_new (int is_main)
 {
     HevSocks5Worker *self;
+    int nonblock = 1;
+    int res;
 
-    self = calloc (1, sizeof (HevSocks5Worker));
+    self = hev_malloc0 (sizeof (HevSocks5Worker));
     if (!self)
         return NULL;
 
@@ -562,23 +560,17 @@ hev_socks5_worker_new (void)
     self->event_fds[0] = -1;
     self->event_fds[1] = -1;
 
-    pthread_once (&key_once, pthread_key_creator);
+    res = pipe (self->event_fds);
+    if (res < 0) {
+        LOG_E ("socks5 worker eventfd");
+        goto exit;
+    }
 
-    return self;
-}
-
-void
-hev_socks5_worker_destroy (HevSocks5Worker *self)
-{
-    LOG_D ("%p works worker destroy", self);
-
-    free (self);
-}
-
-int
-hev_socks5_worker_init (HevSocks5Worker *self, int is_main)
-{
-    LOG_D ("%p works worker init", self);
+    res = ioctl (self->event_fds[0], FIONBIO, (char *)&nonblock);
+    if (res < 0) {
+        LOG_E ("socks5 worker eventfd non-blocking");
+        goto exit;
+    }
 
     self->task_event = hev_task_new (-1);
     if (!self->task_event) {
@@ -589,34 +581,52 @@ hev_socks5_worker_init (HevSocks5Worker *self, int is_main)
     self->task_tcp = hev_task_new (-1);
     if (!self->task_tcp) {
         LOG_E ("socks5 worker task tcp");
-        goto free_event;
+        goto exit;
     }
 
     self->task_udp = hev_task_new (-1);
     if (!self->task_udp) {
         LOG_E ("socks5 worker task udp");
-        goto free_tcp;
+        goto exit;
     }
 
     self->task_dns = hev_task_new (-1);
     if (!self->task_dns) {
         LOG_E ("socks5 worker task dns");
-        goto free_udp;
+        goto exit;
     }
 
     self->is_main = is_main;
-    pthread_setspecific (key, self);
+    pthread_once (&key_once, pthread_key_creator);
 
-    return 0;
+    return self;
 
-free_udp:
-    hev_task_unref (self->task_udp);
-free_tcp:
-    hev_task_unref (self->task_tcp);
-free_event:
-    hev_task_unref (self->task_event);
 exit:
-    return -1;
+    hev_socks5_worker_destroy (self);
+    return NULL;
+}
+
+void
+hev_socks5_worker_destroy (HevSocks5Worker *self)
+{
+    LOG_D ("%p works worker destroy", self);
+
+    if (self->task_event)
+        hev_task_unref (self->task_event);
+    if (self->task_tcp)
+        hev_task_unref (self->task_tcp);
+    if (self->task_udp)
+        hev_task_unref (self->task_udp);
+    if (self->task_dns)
+        hev_task_unref (self->task_dns);
+
+    if (self->event_fds[0] >= 0)
+        close (self->event_fds[0]);
+    if (self->event_fds[1] >= 0)
+        close (self->event_fds[1]);
+
+    hev_free (self);
+    pthread_setspecific (key, NULL);
 }
 
 void
@@ -624,16 +634,26 @@ hev_socks5_worker_start (HevSocks5Worker *self)
 {
     LOG_D ("%p works worker start", self);
 
+    WRITE_ONCE (self->run, 1);
+    pthread_setspecific (key, self);
+
+    hev_task_ref (self->task_event);
     hev_task_run (self->task_event, hev_socks5_event_task_entry, self);
 
-    if (self->task_tcp)
+    if (self->task_tcp) {
+        hev_task_ref (self->task_tcp);
         hev_task_run (self->task_tcp, hev_socks5_tcp_task_entry, self);
+    }
 
-    if (self->task_udp)
+    if (self->task_udp) {
+        hev_task_ref (self->task_udp);
         hev_task_run (self->task_udp, hev_socks5_udp_task_entry, self);
+    }
 
-    if (self->task_dns)
+    if (self->task_dns) {
+        hev_task_ref (self->task_dns);
         hev_task_run (self->task_dns, hev_socks5_dns_task_entry, self);
+    }
 }
 
 void
