@@ -12,6 +12,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <sys/ioctl.h>
 
 #include <hev-task.h>
@@ -32,8 +33,13 @@
 
 #include "hev-socks5-worker.h"
 
-static pthread_key_t key;
-static pthread_once_t key_once = PTHREAD_ONCE_INIT;
+enum
+{
+    SYNC_SEND = 1 << 0,
+    SYNC_WAIT = 1 << 1,
+    SYNC_STOP = 1 << 2,
+    SYNC_SENT = 1 << 3,
+};
 
 struct _HevSocks5Worker
 {
@@ -41,6 +47,7 @@ struct _HevSocks5Worker
 
     int run;
     int is_main;
+    atomic_int tsync;
 
     HevTask *task_tcp;
     HevTask *task_udp;
@@ -51,6 +58,9 @@ struct _HevSocks5Worker
     HevList dns_set;
     HevRBTree udp_set;
 };
+
+static pthread_key_t key;
+static pthread_once_t key_once = PTHREAD_ONCE_INIT;
 
 static void
 pthread_key_creator (void)
@@ -141,8 +151,10 @@ hev_socks5_tcp_task_entry (void *data)
         goto exit;
 
     fd = hev_socket_factory_get (addr, port, SOCK_STREAM, !self->is_main);
-    if (fd < 0)
+    if (fd < 0) {
+        LOG_E ("socks5 tcp socket");
         goto exit;
+    }
 
     hev_task_add_fd (hev_task_self (), fd, POLLIN);
 
@@ -367,8 +379,10 @@ hev_socks5_udp_task_entry (void *data)
         goto exit;
 
     fd = hev_socket_factory_get (addr, port, SOCK_DGRAM, !self->is_main);
-    if (fd < 0)
+    if (fd < 0) {
+        LOG_E ("socks5 udp socket");
         goto exit;
+    }
 
     num = hev_config_get_misc_udp_copy_buffer_nums ();
     hev_task_add_fd (hev_task_self (), fd, POLLIN);
@@ -461,8 +475,10 @@ hev_socks5_dns_task_entry (void *data)
         goto exit;
 
     fd = hev_socket_factory_get (addr, port, SOCK_DGRAM, !self->is_main);
-    if (fd < 0)
+    if (fd < 0) {
+        LOG_E ("socks5 dns socket");
         goto exit;
+    }
 
     hev_task_add_fd (hev_task_self (), fd, POLLIN);
     stack_size = hev_config_get_misc_task_stack_size ();
@@ -533,6 +549,7 @@ hev_socks5_event_task_entry (void *data)
     }
 
     WRITE_ONCE (self->run, 0);
+    atomic_fetch_and (&self->tsync, ~SYNC_SENT);
 
     if (self->task_tcp)
         hev_task_wakeup (self->task_tcp);
@@ -598,6 +615,7 @@ hev_socks5_worker_new (int is_main)
 
     self->is_main = is_main;
     pthread_once (&key_once, pthread_key_creator);
+    atomic_fetch_or (&self->tsync, SYNC_SEND);
 
     return self;
 
@@ -610,6 +628,12 @@ void
 hev_socks5_worker_destroy (HevSocks5Worker *self)
 {
     LOG_D ("%p works worker destroy", self);
+
+retry:
+    if (atomic_fetch_and (&self->tsync, ~SYNC_SEND) & SYNC_WAIT) {
+        usleep (500);
+        goto retry;
+    }
 
     if (self->task_event)
         hev_task_unref (self->task_event);
@@ -633,6 +657,9 @@ void
 hev_socks5_worker_start (HevSocks5Worker *self)
 {
     LOG_D ("%p works worker start", self);
+
+    if (atomic_fetch_and (&self->tsync, ~SYNC_STOP) & SYNC_STOP)
+        return;
 
     WRITE_ONCE (self->run, 1);
     pthread_setspecific (key, self);
@@ -660,13 +687,24 @@ void
 hev_socks5_worker_stop (HevSocks5Worker *self)
 {
     char val = 's';
+    int res;
 
     LOG_D ("%p works worker stop", self);
 
-    if (self->event_fds[1] < 0)
-        return;
+retry:
+    res = atomic_fetch_or (&self->tsync, SYNC_WAIT);
+    if (res & SYNC_WAIT) {
+        usleep (500);
+        goto retry;
+    }
 
-    val = write (self->event_fds[1], &val, sizeof (val));
-    if (val < 0)
-        LOG_E ("socks5 proxy write event");
+    if (res & SYNC_SEND) {
+        res = atomic_fetch_or (&self->tsync, SYNC_SENT);
+        if (!(res & SYNC_SENT))
+            write (self->event_fds[1], &val, sizeof (val));
+    } else {
+        atomic_fetch_or (&self->tsync, SYNC_STOP);
+    }
+
+    atomic_fetch_and (&self->tsync, ~SYNC_WAIT);
 }
