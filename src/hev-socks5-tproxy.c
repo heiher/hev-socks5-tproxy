@@ -20,6 +20,7 @@
 
 #include "hev-socks5-tproxy.h"
 
+static int tsocks;
 static unsigned int workers;
 
 static pthread_t *work_threads;
@@ -41,7 +42,7 @@ hev_socks5_tproxy_init (void)
     res = hev_task_system_init ();
     if (res < 0) {
         LOG_E ("socks5 tproxy task system");
-        goto exit;
+        return -1;
     }
 
     res = hev_tsocks_cache_init ();
@@ -49,6 +50,7 @@ hev_socks5_tproxy_init (void)
         LOG_E ("socks5 tproxy tsocks cache");
         goto exit;
     }
+    tsocks = 1;
 
     workers = hev_config_get_workers ();
     work_threads = hev_malloc0 (sizeof (pthread_t) * workers);
@@ -78,11 +80,21 @@ hev_socks5_tproxy_fini (void)
 {
     LOG_D ("socks5 tproxy fini");
 
-    if (work_threads)
+    if (work_threads) {
         hev_free (work_threads);
-    if (worker_list)
+        work_threads = NULL;
+    }
+
+    if (worker_list) {
         hev_free (worker_list);
-    hev_tsocks_cache_fini ();
+        worker_list = NULL;
+    }
+
+    if (tsocks) {
+        hev_tsocks_cache_fini ();
+        tsocks = 0;
+    }
+
     hev_task_system_fini ();
 }
 
