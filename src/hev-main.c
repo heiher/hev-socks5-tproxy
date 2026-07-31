@@ -84,7 +84,6 @@ main (int argc, char *argv[])
     hev_socks5_tproxy_fini ();
     hev_socks5_logger_fini ();
     hev_logger_fini ();
-    hev_config_fini ();
 
     return 0;
 }

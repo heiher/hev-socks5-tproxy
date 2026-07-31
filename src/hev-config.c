@@ -13,7 +13,7 @@
 #include "hev-logger.h"
 #include "hev-config.h"
 
-static unsigned int workers = 1;
+static unsigned int workers;
 static HevConfigServer srv;
 static char tcp_address[256];
 static char tcp_port[8];
@@ -25,14 +25,14 @@ static char dns_port[8];
 
 static char log_file[1024];
 static char pid_file[1024];
-static int task_stack_size = 20480;
-static int udp_recv_buffer_size = 1048576;
-static int udp_copy_buffer_nums = 10;
-static int connect_timeout = 10000;
-static int tcp_read_write_timeout = 300000;
-static int udp_read_write_timeout = 60000;
-static int limit_nofile = 65535;
-static int log_level = HEV_LOGGER_WARN;
+static int task_stack_size;
+static int udp_recv_buffer_size;
+static int udp_copy_buffer_nums;
+static int connect_timeout;
+static int tcp_read_write_timeout;
+static int udp_read_write_timeout;
+static int limit_nofile;
+static int log_level;
 
 static int
 hev_config_parse_main (yaml_document_t *doc, yaml_node_t *base)
@@ -405,6 +405,31 @@ hev_config_parse_doc (yaml_document_t *doc)
     return 0;
 }
 
+static void
+hev_config_reset (void)
+{
+    workers = 1;
+    task_stack_size = 20480;
+    udp_recv_buffer_size = 1048576;
+    udp_copy_buffer_nums = 10;
+    connect_timeout = 10000;
+    tcp_read_write_timeout = 300000;
+    udp_read_write_timeout = 60000;
+    limit_nofile = 65535;
+    log_level = HEV_LOGGER_WARN;
+
+    memset (&srv, 0, sizeof (srv));
+    memset (tcp_address, 0, sizeof (tcp_address));
+    memset (tcp_port, 0, sizeof (tcp_port));
+    memset (udp_address, 0, sizeof (udp_address));
+    memset (udp_port, 0, sizeof (udp_port));
+    memset (dns_upstream, 0, sizeof (dns_upstream));
+    memset (dns_address, 0, sizeof (dns_address));
+    memset (dns_port, 0, sizeof (dns_port));
+    memset (log_file, 0, sizeof (log_file));
+    memset (pid_file, 0, sizeof (pid_file));
+}
+
 int
 hev_config_init (const char *config_path)
 {
@@ -412,6 +437,8 @@ hev_config_init (const char *config_path)
     yaml_document_t doc;
     FILE *fp;
     int res = -1;
+
+    hev_config_reset ();
 
     if (!yaml_parser_initialize (&parser))
         goto exit;
@@ -437,11 +464,6 @@ free_parser:
     yaml_parser_delete (&parser);
 exit:
     return res;
-}
-
-void
-hev_config_fini (void)
-{
 }
 
 unsigned int

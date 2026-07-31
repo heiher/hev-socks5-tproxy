@@ -26,7 +26,6 @@ struct _HevConfigServer
 };
 
 int hev_config_init (const char *path);
-void hev_config_fini (void);
 
 unsigned int hev_config_get_workers (void);
 
