@@ -156,8 +156,7 @@ hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self, unsigned int num)
             return -1;
         }
 
-        f = MSG_DONTWAIT | MSG_WAITALL;
-        r = hev_task_io_socket_sendmmsg (fd, dmv, n, f, NULL, NULL);
+        r = hev_task_io_socket_sendmmsg (fd, dmv, n, MSG_WAITALL, NULL, NULL);
         hev_tsocks_cache_put (fd);
         if (r <= 0) {
             LOG_D ("%p socks5 session udp fwd b send", self);
