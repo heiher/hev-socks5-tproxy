@@ -325,6 +325,20 @@ public class TProxyService {
 }
 ```
 
+### Kotlin
+
+```kt
+object TProxyService {
+    private external fun TProxyStartService(config_path: String): Boolean
+    private external fun TProxyStopService(): Boolean
+    private external fun TProxyIsRunning(): Boolean
+
+    init {
+        System.loadLibrary("hev-socks5-tproxy")
+    }
+}
+```
+
 Allow overriding the package and class names in `Application.mk`.
 
 ```makefile
