@@ -8,6 +8,7 @@
  */
 
 #define _GNU_SOURCE
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -700,8 +701,10 @@ retry:
 
     if (res & SYNC_SEND) {
         res = atomic_fetch_or (&self->tsync, SYNC_SENT);
-        if (!(res & SYNC_SENT))
-            write (self->event_fds[1], &val, sizeof (val));
+        if (!(res & SYNC_SENT)) {
+            res = write (self->event_fds[1], &val, sizeof (val));
+            assert (res > 0 && "socks5 worker write event");
+        }
     } else {
         atomic_fetch_or (&self->tsync, SYNC_STOP);
     }
