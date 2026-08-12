@@ -127,6 +127,16 @@ hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self, unsigned int num)
         int fd, f, n, r;
 
         for (i = s, n = 0; i < res; i++) {
+            if (!smv[i].addr || smv[i].len == 0)
+                break;
+
+            if (n > 0) {
+                r = hev_socks5_addr_len (smv[s].addr);
+                r = memcmp (smv[s].addr, smv[i].addr, r);
+                if (r)
+                    break;
+            }
+
             dmv[n].msg_hdr.msg_name = &self->addr;
             dmv[n].msg_hdr.msg_namelen = sizeof (self->addr);
             dmv[n].msg_hdr.msg_controllen = 0;
@@ -134,14 +144,13 @@ hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self, unsigned int num)
             dmv[n].msg_hdr.msg_iovlen = 1;
             iov[n].iov_base = smv[i].buf;
             iov[n].iov_len = smv[i].len;
+            n++;
+        }
 
-            if (n++ == 0)
-                continue;
-
-            r = hev_socks5_addr_len (smv[i].addr);
-            r = memcmp (smv[0].addr, smv[i].addr, r);
-            if (r)
-                break;
+        if (n == 0) {
+            /* smv[s] itself is invalid (empty payload or no address) */
+            s++;
+            continue;
         }
 
         r = hev_socks5_addr_into_sockaddr6 (smv[s].addr, &saddr, &f);
