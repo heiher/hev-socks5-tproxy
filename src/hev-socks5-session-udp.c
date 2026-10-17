@@ -11,6 +11,8 @@
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
+#include <netinet/in.h>
+#include <netinet/udp.h>
 
 #include <hev-task.h>
 #include <hev-task-io.h>
@@ -99,6 +101,129 @@ hev_socks5_session_udp_fwd_f (HevSocks5SessionUDP *self, unsigned int num)
     return 1;
 }
 
+#if defined(__linux__) && defined(UDP_SEGMENT)
+static int udp_gso_max_size = -1;
+
+static int
+hev_socks5_session_udp_gso_probe (void)
+{
+    int size = 1024;
+    int fd, res;
+
+    /* Kernels without UDP GSO would send the coalesced datagrams as one. */
+    fd = socket (AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0)
+        return 0;
+    res = setsockopt (fd, SOL_UDP, UDP_SEGMENT, &size, sizeof (size));
+    close (fd);
+
+    return (res == 0) ? 65535 : 0;
+}
+
+static int
+hev_socks5_session_udp_sendmmsg_gso (int fd, struct mmsghdr *dmv,
+                                     struct iovec *iov, int n)
+{
+    union
+    {
+        char buf[CMSG_SPACE (sizeof (uint16_t))];
+        struct cmsghdr align;
+    } u[n];
+    struct mmsghdr mvec[n];
+    unsigned int segs[n];
+    int i, g, res;
+
+    /*
+     * Coalesce runs of equal sized datagrams into a single UDP GSO send, the
+     * kernel splits them into separate datagrams.
+     */
+    for (i = 0, g = 0; i < n; g++) {
+        size_t size = iov[i].iov_len;
+        size_t total = size;
+        int k;
+
+        for (k = 1; (i + k) < n && k < 64 && (int)size <= udp_gso_max_size;
+             k++) {
+            size_t s = iov[i + k].iov_len;
+            if ((s != size) || ((total + s) > 65000))
+                break;
+            total += s;
+        }
+
+        mvec[g] = dmv[i];
+        mvec[g].msg_hdr.msg_iov = &iov[i];
+        mvec[g].msg_hdr.msg_iovlen = k;
+        mvec[g].msg_hdr.msg_control = NULL;
+        mvec[g].msg_hdr.msg_controllen = 0;
+        if (k > 1) {
+            struct cmsghdr *cm;
+
+            mvec[g].msg_hdr.msg_control = u[g].buf;
+            mvec[g].msg_hdr.msg_controllen = sizeof (u[g].buf);
+            cm = CMSG_FIRSTHDR (&mvec[g].msg_hdr);
+            cm->cmsg_level = SOL_UDP;
+            cm->cmsg_type = UDP_SEGMENT;
+            cm->cmsg_len = CMSG_LEN (sizeof (uint16_t));
+            *(uint16_t *)CMSG_DATA (cm) = size;
+        }
+        segs[g] = k;
+        i += k;
+    }
+
+    res = hev_task_io_socket_sendmmsg (fd, mvec, g, MSG_WAITALL, NULL, NULL);
+    if (res <= 0) {
+        /* Segments larger than the path MTU are rejected, don't retry them. */
+        if ((errno == EINVAL) && (segs[0] > 1)) {
+            size_t size = iov[0].iov_len;
+            if ((int)size <= udp_gso_max_size)
+                udp_gso_max_size = size - 1;
+        }
+        return res;
+    }
+
+    for (i = 0, n = 0; i < res; i++)
+        n += segs[i];
+
+    return n;
+}
+#endif /* __linux__ && UDP_SEGMENT */
+
+static int
+hev_socks5_session_udp_sendmmsg (int fd, struct mmsghdr *dmv, struct iovec *iov,
+                                 int n)
+{
+    int s = 0;
+
+#if defined(__linux__) && defined(UDP_SEGMENT)
+    if (udp_gso_max_size < 0)
+        udp_gso_max_size = hev_socks5_session_udp_gso_probe ();
+
+    while ((s < n) && udp_gso_max_size) {
+        int r;
+
+        r = hev_socks5_session_udp_sendmmsg_gso (fd, dmv + s, iov + s, n - s);
+        if (r <= 0)
+            break;
+
+        s += r;
+    }
+#endif /* __linux__ && UDP_SEGMENT */
+
+    /* Whatever GSO did not send, including the batch it refused, goes plain. */
+    if (s < n) {
+        int r;
+
+        r = hev_task_io_socket_sendmmsg (fd, dmv + s, n - s, MSG_WAITALL, NULL,
+                                         NULL);
+        if (r <= 0)
+            return s ? s : r;
+
+        s += r;
+    }
+
+    return s;
+}
+
 static int
 hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self, unsigned int num)
 {
@@ -165,7 +290,7 @@ hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self, unsigned int num)
             return -1;
         }
 
-        r = hev_task_io_socket_sendmmsg (fd, dmv, n, MSG_WAITALL, NULL, NULL);
+        r = hev_socks5_session_udp_sendmmsg (fd, dmv, iov, n);
         hev_tsocks_cache_put (fd);
         if (r <= 0) {
             LOG_D ("%p socks5 session udp fwd b send", self);

@@ -213,6 +213,10 @@ hev_socks5_udp_recvmsg (HevSocks5Worker *self, int fd, struct sockaddr *saddr,
     if (res <= 0)
         return res;
 
+    /* A truncated query is not forwardable, drop it like an empty read. */
+    if (mh.msg_flags & MSG_TRUNC)
+        return 0;
+
     msg_to_sock_addr (&mh, daddr);
 
     return res;
@@ -222,7 +226,7 @@ static int
 _hev_socks5_udp_recvmmsg (HevSocks5Worker *self, int fd,
                           struct sockaddr_in6 *saddr,
                           struct sockaddr_in6 *daddr, struct iovec *iov,
-                          int num)
+                          int *trunc, int num)
 {
     union
     {
@@ -248,6 +252,7 @@ _hev_socks5_udp_recvmmsg (HevSocks5Worker *self, int fd,
     for (i = 0; i < res; i++) {
         msg_to_sock_addr (&msgv[i].msg_hdr, (struct sockaddr *)&daddr[i]);
         iov[i].iov_len = msgv[i].msg_len;
+        trunc[i] = !!(msgv[i].msg_hdr.msg_flags & MSG_TRUNC);
     }
 
     return res;
@@ -398,16 +403,18 @@ hev_socks5_udp_task_entry (void *data)
         for (;;) {
             struct sockaddr_in6 saddr[num];
             struct sockaddr_in6 daddr[num];
+            int trunc[num];
             int res;
 
+            /* Receive capacity must be restored, a short read shrinks it. */
             for (i = 0; i < num; i++) {
-                if (!iov[i].iov_base) {
+                if (!iov[i].iov_base)
                     iov[i].iov_base = hev_malloc (UDP_BUF_SIZE);
-                    iov[i].iov_len = UDP_BUF_SIZE;
-                }
+                iov[i].iov_len = UDP_BUF_SIZE;
             }
 
-            res = _hev_socks5_udp_recvmmsg (self, fd, saddr, daddr, iov, num);
+            res = _hev_socks5_udp_recvmmsg (self, fd, saddr, daddr, iov, trunc,
+                                            num);
             if (res == -1 || res == 0) {
                 LOG_W ("socks5 udp recvmmsg");
                 continue;
@@ -419,6 +426,9 @@ hev_socks5_udp_task_entry (void *data)
                 struct sockaddr *sap = (struct sockaddr *)&saddr[i];
                 struct sockaddr *dap = (struct sockaddr *)&daddr[i];
                 int ret;
+
+                if (trunc[i])
+                    continue;
 
                 ret = hev_socks5_udp_dispatch (self, sap, dap, iov[i].iov_base,
                                                iov[i].iov_len);
