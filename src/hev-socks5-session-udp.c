@@ -173,7 +173,7 @@ hev_socks5_session_udp_sendmmsg_gso (int fd, struct mmsghdr *dmv,
     res = hev_task_io_socket_sendmmsg (fd, mvec, g, MSG_WAITALL, NULL, NULL);
     if (res <= 0) {
         /* Segments larger than the path MTU are rejected, don't retry them. */
-        if ((errno == EINVAL) && (segs[0] > 1)) {
+        if (((errno == EINVAL) || (errno == EMSGSIZE)) && (segs[0] > 1)) {
             size_t size = iov[0].iov_len;
             if ((int)size <= udp_gso_max_size)
                 udp_gso_max_size = size - 1;
