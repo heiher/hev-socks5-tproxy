@@ -164,6 +164,8 @@ hev_tproxy_session_dns_run (HevTProxySession *base)
     static struct sockaddr_in6 addr;
     struct sockaddr *sap;
     struct sockaddr *dap;
+    struct msghdr mh;
+    struct iovec iov;
     int res;
     int tfd;
     int fd;
@@ -193,9 +195,22 @@ hev_tproxy_session_dns_run (HevTProxySession *base)
     if (res <= 0)
         goto exit;
 
-    res = hev_task_io_socket_recvfrom (fd, self->buffer, UDP_BUF_SIZE, 0, NULL,
-                                       NULL, io_yielder, self);
+    mh.msg_name = NULL;
+    mh.msg_namelen = 0;
+    mh.msg_control = NULL;
+    mh.msg_controllen = 0;
+    mh.msg_iov = &iov;
+    mh.msg_iovlen = 1;
+
+    iov.iov_base = self->buffer;
+    iov.iov_len = UDP_BUF_SIZE;
+
+    res = hev_task_io_socket_recvmsg (fd, &mh, 0, io_yielder, self);
     if (res <= 0)
+        goto exit;
+
+    /* A truncated reply is not forwardable, the client retries over TCP. */
+    if (mh.msg_flags & MSG_TRUNC)
         goto exit;
 
     sap = (struct sockaddr *)&self->saddr;
