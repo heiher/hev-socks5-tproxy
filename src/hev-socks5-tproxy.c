@@ -160,6 +160,10 @@ retry:
         goto retry;
     }
 
+    /* Wake worker threads that wait to be started, they would spin forever
+     * when the worker was never started or the initialization failed. */
+    atomic_fetch_or (&tsync, SYNC_ABRT);
+
     if (worker_list) {
         int workers = hev_config_get_workers ();
         int i;
