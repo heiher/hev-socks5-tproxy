@@ -518,6 +518,11 @@ hev_socks5_dns_task_entry (void *data)
         }
 
         task = hev_task_new (stack_size);
+        if (!task) {
+            hev_object_unref (HEV_OBJECT (dns));
+            continue;
+        }
+
         hev_task_run (task, hev_socks5_dns_session_task_entry, dns);
         hev_list_add_tail (&self->dns_set, &dns->node);
         hev_tproxy_session_dns_set_size (dns, res);
