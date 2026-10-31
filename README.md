@@ -1,6 +1,6 @@
 # HevSocks5TProxy
 
-[![status](https://github.com/heiher/hev-socks5-tproxy/actions/workflows/build.yaml/badge.svg?branch=main&event=push)](https://github.com/heiher/hev-socks5-tproxy)
+[![status](https://github.com/heiher/hev-socks5-tproxy/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/heiher/hev-socks5-tproxy)
 
 HevSocks5TProxy is a simple, lightweight transparent proxy for Linux.
 
