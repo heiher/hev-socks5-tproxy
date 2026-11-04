@@ -170,7 +170,9 @@ hev_socks5_session_udp_sendmmsg_gso (int fd, struct mmsghdr *dmv,
         i += k;
     }
 
-    res = hev_task_io_socket_sendmmsg (fd, mvec, g, MSG_WAITALL, NULL, NULL);
+    /* The shared fd isn't in this task's poller, never wait on it. */
+    res = hev_task_io_socket_sendmmsg (fd, mvec, g, MSG_WAITALL | MSG_DONTWAIT,
+                                       NULL, NULL);
     if (res <= 0) {
         /* Segments larger than the path MTU are rejected, don't retry them. */
         if (((errno == EINVAL) || (errno == EMSGSIZE)) && (segs[0] > 1)) {
@@ -213,8 +215,8 @@ hev_socks5_session_udp_sendmmsg (int fd, struct mmsghdr *dmv, struct iovec *iov,
     if (s < n) {
         int r;
 
-        r = hev_task_io_socket_sendmmsg (fd, dmv + s, n - s, MSG_WAITALL, NULL,
-                                         NULL);
+        r = hev_task_io_socket_sendmmsg (
+            fd, dmv + s, n - s, MSG_WAITALL | MSG_DONTWAIT, NULL, NULL);
         if (r <= 0)
             return s ? s : r;
 
@@ -249,7 +251,8 @@ hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self, unsigned int num)
         struct sockaddr_in6 saddr;
         struct mmsghdr dmv[res];
         struct iovec iov[res];
-        int fd, f, n, r;
+        HevTSock *ts;
+        int f, n, r, err;
 
         for (i = s, n = 0; i < res; i++) {
             if (!smv[i].addr || smv[i].len == 0)
@@ -278,21 +281,28 @@ hev_socks5_session_udp_fwd_b (HevSocks5SessionUDP *self, unsigned int num)
             continue;
         }
 
+        memset (&saddr, 0, sizeof (saddr));
         r = hev_socks5_addr_into_sockaddr6 (smv[s].addr, &saddr, &f);
         if (r < 0) {
             LOG_D ("%p socks5 session udp fwd b addr", self);
             return -1;
         }
 
-        fd = hev_tsocks_cache_get ((struct sockaddr *)&saddr);
-        if (fd < 0) {
+        ts = hev_tsocks_cache_get ((struct sockaddr *)&saddr);
+        if (!ts) {
             LOG_D ("%p socks5 session udp tsocks get", self);
             return -1;
         }
 
-        r = hev_socks5_session_udp_sendmmsg (fd, dmv, iov, n);
-        hev_tsocks_cache_put (fd);
+        r = hev_socks5_session_udp_sendmmsg (ts->fd, dmv, iov, n);
+        err = errno;
+        hev_tsocks_cache_put (ts);
         if (r <= 0) {
+            /* Send buffer full, drop the datagrams like any UDP hop. */
+            if (err == EAGAIN || err == EWOULDBLOCK) {
+                s += n;
+                continue;
+            }
             LOG_D ("%p socks5 session udp fwd b send", self);
             return -1;
         }

@@ -166,8 +166,8 @@ hev_tproxy_session_dns_run (HevTProxySession *base)
     struct sockaddr *dap;
     struct msghdr mh;
     struct iovec iov;
+    HevTSock *ts;
     int res;
-    int tfd;
     int fd;
 
     LOG_D ("tproxy session dns run");
@@ -216,12 +216,12 @@ hev_tproxy_session_dns_run (HevTProxySession *base)
     sap = (struct sockaddr *)&self->saddr;
     dap = (struct sockaddr *)&self->daddr;
 
-    tfd = hev_tsocks_cache_get (dap);
-    if (tfd < 0)
+    ts = hev_tsocks_cache_get (dap);
+    if (!ts)
         goto exit;
 
-    sendto (tfd, self->buffer, res, 0, sap, sizeof (self->saddr));
-    hev_tsocks_cache_put (tfd);
+    sendto (ts->fd, self->buffer, res, 0, sap, sizeof (self->saddr));
+    hev_tsocks_cache_put (ts);
 
 exit:
     close (fd);

@@ -14,8 +14,9 @@
 #define MINOR_VERSION (13)
 #define MICRO_VERSION (1)
 
+#define TSOCKS_MAX_CACHED (64)
+
 static const int UDP_BUF_SIZE = 1500;
 static const int UDP_POOL_SIZE = 512;
-static const int TSOCKS_MAX_CACHED = 64;
 
 #endif /* __HEV_CONFIG_CONST_H__ */
