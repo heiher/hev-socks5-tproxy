@@ -11,8 +11,8 @@
 #define __HEV_CONFIG_CONST_H__
 
 #define MAJOR_VERSION (2)
-#define MINOR_VERSION (13)
-#define MICRO_VERSION (1)
+#define MINOR_VERSION (14)
+#define MICRO_VERSION (0)
 
 #define TSOCKS_MAX_CACHED (64)
 
