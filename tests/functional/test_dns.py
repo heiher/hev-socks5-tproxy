@@ -1,8 +1,9 @@
 """DNS: queries to any resolver are forwarded to the configured upstream."""
 import os
+import subprocess
 import socket
 
-from hevtest import client
+from hevtest import client, config
 from hevtest.case import TProxyTestCase
 
 
@@ -91,3 +92,50 @@ class DnsTest(TProxyTestCase):
         self.assertTrue(tp.proc.alive(), tp.log())
         r, _ = client.dns_query(self.bed.dns_server4, "after-junk.test")
         self.assertIsNotNone(r)
+
+    def test_upstream_port(self):
+        self.tproxy(dns={"upstream-port": 5353})
+        r, _ = client.dns_query(self.bed.dns_server4, "port.test")
+        self.assertIsNotNone(r)
+        self.assertTrue(r[0].startswith("192.0.2."))
+
+    def test_upstream_port_closed(self):
+        self.tproxy(dns={"upstream-port": 5354})
+        r, _ = client.dns_query(self.bed.dns_server4, "closed.test",
+                                timeout=1.0, retries=1)
+        self.assertIsNone(r)
+
+    def test_list_single_entry(self):
+        self.tproxy(dns=[{"port": self.bed.dns_port, "address": "::",
+                          "upstream": self.bed.dns_upstream}])
+        r, _ = client.dns_query(self.bed.dns_server4, "list.test")
+        self.assertIsNotNone(r)
+
+    def test_multiple_instances(self):
+        # two listeners, each with its own upstream; steer port 53 to each
+        bad, good = self.bed.dns_port, 2053
+        tp = self.tproxy(dns=[
+            {"port": bad, "address": "::", "upstream": "10.201.0.99"},
+            {"port": good, "address": "::", "upstream": self.bed.dns_upstream,
+             "upstream-port": 5353},
+        ])
+        self.assertTrue(self.bed.listening(tp.proc.pid, "udp", good))
+        r, _ = client.dns_query(self.bed.dns_server4, "bad.test",
+                                timeout=1.0, retries=1)
+        self.assertIsNone(r)
+        self.bed.redirect(tcp=self.bed.tcp_port, udp=self.bed.udp_port,
+                          dns=good)
+        for srv in (self.bed.dns_server4, self.bed.dns_server6):
+            r, src = client.dns_query(srv, "good.test")
+            self.assertIsNotNone(r, "no reply from " + srv)
+            self.assertEqual(src, (srv, 53))
+
+    def test_invalid_upstream_rejected(self):
+        for dns in ({"upstream": "not-an-ip"}, {"upstream-port": 0},
+                    {"upstream-port": 70000}):
+            with self.subTest(dns=dns):
+                cfg = config.build(self.bed, dns=dns)
+                path = self.write_config(cfg)
+                r = subprocess.run([self.bed.tproxy_bin, path],
+                                   capture_output=True, text=True, timeout=5)
+                self.assertNotEqual(r.returncode, 0)

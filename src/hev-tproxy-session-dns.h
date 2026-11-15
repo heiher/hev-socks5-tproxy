@@ -33,6 +33,7 @@ struct _HevTProxySessionDNS
     unsigned int timeout;
     struct sockaddr_in6 saddr;
     struct sockaddr_in6 daddr;
+    const struct sockaddr_in6 *upstream;
     unsigned char buffer[0];
 };
 
@@ -47,7 +48,8 @@ HevObjectClass *hev_tproxy_session_dns_class (void);
 
 int hev_tproxy_session_dns_construct (HevTProxySessionDNS *self);
 
-HevTProxySessionDNS *hev_tproxy_session_dns_new (void);
+HevTProxySessionDNS *
+hev_tproxy_session_dns_new (const struct sockaddr_in6 *upstream);
 
 struct sockaddr *hev_tproxy_session_dns_get_saddr (HevTProxySessionDNS *self);
 struct sockaddr *hev_tproxy_session_dns_get_daddr (HevTProxySessionDNS *self);

@@ -10,6 +10,7 @@ Runs inside the server environment (stdlib only).  Everything listens on
   TCP 7005 count   (read to EOF, answer "<bytes>\\n")
   UDP 7006 reflect (remember the sender, answer from UDP 7007 to it)
   UDP 53   dns     (A/AAAA stub resolver, deterministic answers)
+  UDP 5353 dns     (same stub on a non-standard port)
   TCP 7100 ctrl    ("udp-sink\\n" -> "<bytes> <packets>\\n", then resets;
                     "dns-count\\n" -> "<queries>\\n")
 """
@@ -221,6 +222,7 @@ def main():
     udp_listener(7003, u_source)
     udp_listener(7006, u_reflect)
     udp_listener(53, u_dns)
+    udp_listener(5353, u_dns)
     print("READY", flush=True)
     threading.Event().wait()
 

@@ -99,7 +99,7 @@ udp:
   address: '::'
 
 # Proxy DNS for bridged mode
-#   [address]:port <-> [upstream]:53 (dnsmasq)
+#   [address]:port <-> [upstream]:upstream-port (dnsmasq)
 dns:
   # DNS port
   port: 1053
@@ -107,6 +107,18 @@ dns:
   address: '::'
   # DNS upstream
   upstream: 127.0.0.1
+  # DNS upstream port (default: 53)
+# upstream-port: 53
+
+# Multiple DNS instances (use a list instead of a single mapping)
+#dns:
+#  - port: 1053
+#    address: '::'
+#    upstream: 127.0.0.1
+#  - port: 1054
+#    address: '::'
+#    upstream: 127.0.0.1
+#    upstream-port: 5353
 
 #misc:
   # task stack size (bytes)

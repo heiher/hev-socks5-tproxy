@@ -9,6 +9,8 @@
 
 #include <yaml.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <arpa/inet.h>
 
 #include "hev-logger.h"
 #include "hev-config.h"
@@ -19,9 +21,8 @@ static char tcp_address[256];
 static char tcp_port[8];
 static char udp_address[256];
 static char udp_port[8];
-static char dns_upstream[256];
-static char dns_address[256];
-static char dns_port[8];
+static HevConfigDNS *dns_list;
+static int dns_count;
 
 static char log_file[1024];
 static char pid_file[1024];
@@ -222,13 +223,40 @@ hev_config_parse_addr (yaml_document_t *doc, yaml_node_t *base, const char *sec,
 }
 
 static int
+hev_config_parse_dns_upstream (const char *addr, const char *port,
+                               struct sockaddr_in6 *saddr)
+{
+    unsigned long p = strtoul (port, NULL, 10);
+
+    if (!p || p > 65535)
+        return -1;
+
+    memset (saddr, 0, sizeof (*saddr));
+    saddr->sin6_family = AF_INET6;
+    saddr->sin6_port = htons (p);
+
+    if (inet_pton (AF_INET, addr, &saddr->sin6_addr.s6_addr[12]) == 1) {
+        saddr->sin6_addr.s6_addr[10] = 0xff;
+        saddr->sin6_addr.s6_addr[11] = 0xff;
+        return 0;
+    }
+
+    if (inet_pton (AF_INET6, addr, &saddr->sin6_addr) == 1)
+        return 0;
+
+    return -1;
+}
+
+static int
 hev_config_parse_dns_addr (yaml_document_t *doc, yaml_node_t *base,
                            const char *sec)
 {
     yaml_node_pair_t *pair;
+    HevConfigDNS *dns;
     const char *addr = NULL;
     const char *port = NULL;
     const char *upstream = NULL;
+    const char *upstream_port = "53";
 
     if (!base || YAML_MAPPING_NODE != base->type)
         return -1;
@@ -257,6 +285,8 @@ hev_config_parse_dns_addr (yaml_document_t *doc, yaml_node_t *base,
             addr = value;
         else if (0 == strcmp (key, "upstream"))
             upstream = value;
+        else if (0 == strcmp (key, "upstream-port"))
+            upstream_port = value;
     }
 
     if (!port) {
@@ -274,9 +304,43 @@ hev_config_parse_dns_addr (yaml_document_t *doc, yaml_node_t *base,
         return -1;
     }
 
-    strncpy (dns_upstream, upstream, 256 - 1);
-    strncpy (dns_address, addr, 256 - 1);
-    strncpy (dns_port, port, 8 - 1);
+    dns = realloc (dns_list, sizeof (HevConfigDNS) * (dns_count + 1));
+    if (!dns)
+        return -1;
+    dns_list = dns;
+    dns = &dns_list[dns_count];
+
+    if (hev_config_parse_dns_upstream (upstream, upstream_port,
+                                       &dns->upstream) < 0) {
+        fprintf (stderr, "Invalid %s.upstream!\n", sec);
+        return -1;
+    }
+
+    memset (dns->addr, 0, sizeof (dns->addr));
+    memset (dns->port, 0, sizeof (dns->port));
+    strncpy (dns->addr, addr, sizeof (dns->addr) - 1);
+    strncpy (dns->port, port, sizeof (dns->port) - 1);
+    dns_count++;
+
+    return 0;
+}
+
+static int
+hev_config_parse_dns (yaml_document_t *doc, yaml_node_t *base, const char *sec)
+{
+    yaml_node_item_t *item;
+
+    if (!base || YAML_SEQUENCE_NODE != base->type)
+        return hev_config_parse_dns_addr (doc, base, sec);
+
+    for (item = base->data.sequence.items.start;
+         item < base->data.sequence.items.top; item++) {
+        yaml_node_t *node = yaml_document_get_node (doc, *item);
+
+        if (hev_config_parse_dns_addr (doc, node, sec) < 0)
+            return -1;
+    }
+
     return 0;
 }
 
@@ -394,7 +458,7 @@ hev_config_parse_doc (yaml_document_t *doc)
         else if (0 == strcmp (key, "udp"))
             res = hev_config_parse_addr (doc, node, key, udp_address, udp_port);
         else if (0 == strcmp (key, "dns"))
-            res = hev_config_parse_dns_addr (doc, node, key);
+            res = hev_config_parse_dns (doc, node, key);
         else if (0 == strcmp (key, "misc"))
             res = hev_config_parse_misc (doc, node);
 
@@ -423,9 +487,9 @@ hev_config_reset (void)
     memset (tcp_port, 0, sizeof (tcp_port));
     memset (udp_address, 0, sizeof (udp_address));
     memset (udp_port, 0, sizeof (udp_port));
-    memset (dns_upstream, 0, sizeof (dns_upstream));
-    memset (dns_address, 0, sizeof (dns_address));
-    memset (dns_port, 0, sizeof (dns_port));
+    free (dns_list);
+    dns_list = NULL;
+    dns_count = 0;
     memset (log_file, 0, sizeof (log_file));
     memset (pid_file, 0, sizeof (pid_file));
 }
@@ -508,25 +572,16 @@ hev_config_get_udp_port (void)
     return udp_port;
 }
 
-const char *
-hev_config_get_dns_upstream (void)
+int
+hev_config_get_dns_count (void)
 {
-    return dns_upstream;
+    return dns_count;
 }
 
-const char *
-hev_config_get_dns_address (void)
+HevConfigDNS *
+hev_config_get_dns (int index)
 {
-    if ('\0' == dns_address[0])
-        return NULL;
-
-    return dns_address;
-}
-
-const char *
-hev_config_get_dns_port (void)
-{
-    return dns_port;
+    return &dns_list[index];
 }
 
 int

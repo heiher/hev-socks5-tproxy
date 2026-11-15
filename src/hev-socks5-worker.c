@@ -9,6 +9,7 @@
 
 #define _GNU_SOURCE
 #include <assert.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -52,8 +53,9 @@ struct _HevSocks5Worker
 
     HevTask *task_tcp;
     HevTask *task_udp;
-    HevTask *task_dns;
+    HevTask **task_dns;
     HevTask *task_event;
+    int dns_count;
 
     HevList tcp_set;
     HevList dns_set;
@@ -471,21 +473,18 @@ hev_socks5_dns_session_task_entry (void *data)
 static void
 hev_socks5_dns_task_entry (void *data)
 {
-    HevSocks5Worker *self = data;
+    HevSocks5Worker *self = hev_socks5_worker_self ();
+    intptr_t index = (intptr_t)data;
+    HevConfigDNS *cfg;
     HevListNode *node;
-    const char *addr;
-    const char *port;
     int stack_size;
     int fd;
 
     LOG_D ("socks5 dns task run");
 
-    addr = hev_config_get_dns_address ();
-    port = hev_config_get_dns_port ();
-    if (!addr)
-        goto exit;
-
-    fd = hev_socket_factory_get (addr, port, SOCK_DGRAM, !self->is_main);
+    cfg = hev_config_get_dns (index);
+    fd = hev_socket_factory_get (cfg->addr, cfg->port, SOCK_DGRAM,
+                                 !self->is_main);
     if (fd < 0) {
         LOG_E ("socks5 dns socket");
         goto exit;
@@ -502,7 +501,7 @@ hev_socks5_dns_task_entry (void *data)
         void *buffer;
         int res;
 
-        dns = hev_tproxy_session_dns_new ();
+        dns = hev_tproxy_session_dns_new (&cfg->upstream);
         sap = hev_tproxy_session_dns_get_saddr (dns);
         dap = hev_tproxy_session_dns_get_daddr (dns);
         buffer = hev_tproxy_session_dns_get_buffer (dns);
@@ -539,7 +538,7 @@ hev_socks5_dns_task_entry (void *data)
 
     close (fd);
 exit:
-    self->task_dns = NULL;
+    self->task_dns[index] = NULL;
 }
 
 static void
@@ -548,6 +547,7 @@ hev_socks5_event_task_entry (void *data)
     HevTask *task = hev_task_self ();
     HevSocks5Worker *self = data;
     int res;
+    int i;
 
     LOG_D ("socks5 event task run");
 
@@ -571,8 +571,9 @@ hev_socks5_event_task_entry (void *data)
         hev_task_wakeup (self->task_tcp);
     if (self->task_udp)
         hev_task_wakeup (self->task_udp);
-    if (self->task_dns)
-        hev_task_wakeup (self->task_dns);
+    for (i = 0; i < self->dns_count; i++)
+        if (self->task_dns[i])
+            hev_task_wakeup (self->task_dns[i]);
 
     hev_task_del_fd (task, self->event_fds[0]);
 }
@@ -583,6 +584,7 @@ hev_socks5_worker_new (int is_main)
     HevSocks5Worker *self;
     int nonblock = 1;
     int res;
+    int i;
 
     self = hev_malloc0 (sizeof (HevSocks5Worker));
     if (!self)
@@ -623,10 +625,21 @@ hev_socks5_worker_new (int is_main)
         goto exit;
     }
 
-    self->task_dns = hev_task_new (-1);
-    if (!self->task_dns) {
-        LOG_E ("socks5 worker task dns");
-        goto exit;
+    self->dns_count = hev_config_get_dns_count ();
+    if (self->dns_count) {
+        self->task_dns = hev_malloc0 (sizeof (HevTask *) * self->dns_count);
+        if (!self->task_dns) {
+            LOG_E ("socks5 worker task dns");
+            goto exit;
+        }
+    }
+
+    for (i = 0; i < self->dns_count; i++) {
+        self->task_dns[i] = hev_task_new (-1);
+        if (!self->task_dns[i]) {
+            LOG_E ("socks5 worker task dns");
+            goto exit;
+        }
     }
 
     self->is_main = is_main;
@@ -643,6 +656,8 @@ exit:
 void
 hev_socks5_worker_destroy (HevSocks5Worker *self)
 {
+    int i;
+
     LOG_D ("%p works worker destroy", self);
 
 retry:
@@ -657,8 +672,11 @@ retry:
         hev_task_unref (self->task_tcp);
     if (self->task_udp)
         hev_task_unref (self->task_udp);
+    for (i = 0; i < self->dns_count; i++)
+        if (self->task_dns && self->task_dns[i])
+            hev_task_unref (self->task_dns[i]);
     if (self->task_dns)
-        hev_task_unref (self->task_dns);
+        hev_free (self->task_dns);
 
     if (self->event_fds[0] >= 0)
         close (self->event_fds[0]);
@@ -672,6 +690,8 @@ retry:
 void
 hev_socks5_worker_start (HevSocks5Worker *self)
 {
+    int i;
+
     LOG_D ("%p works worker start", self);
 
     if (atomic_fetch_and (&self->tsync, ~SYNC_STOP) & SYNC_STOP)
@@ -693,9 +713,12 @@ hev_socks5_worker_start (HevSocks5Worker *self)
         hev_task_run (self->task_udp, hev_socks5_udp_task_entry, self);
     }
 
-    if (self->task_dns) {
-        hev_task_ref (self->task_dns);
-        hev_task_run (self->task_dns, hev_socks5_dns_task_entry, self);
+    for (i = 0; i < self->dns_count; i++) {
+        if (self->task_dns[i]) {
+            hev_task_ref (self->task_dns[i]);
+            hev_task_run (self->task_dns[i], hev_socks5_dns_task_entry,
+                          (void *)(intptr_t)i);
+        }
     }
 }
 

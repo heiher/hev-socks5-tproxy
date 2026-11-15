@@ -66,7 +66,7 @@ hev_tproxy_session_dns_set_size (HevTProxySessionDNS *self, unsigned size)
 }
 
 HevTProxySessionDNS *
-hev_tproxy_session_dns_new (void)
+hev_tproxy_session_dns_new (const struct sockaddr_in6 *upstream)
 {
     HevTProxySessionDNS *self;
     int res;
@@ -77,6 +77,8 @@ hev_tproxy_session_dns_new (void)
 
     memset (self, 0, sizeof (HevTProxySessionDNS));
 
+    self->upstream = upstream;
+
     res = hev_tproxy_session_dns_construct (self);
     if (res < 0) {
         hev_free (self);
@@ -86,53 +88,6 @@ hev_tproxy_session_dns_new (void)
     LOG_D ("tproxy session dns new");
 
     return self;
-}
-
-static int
-hev_tproxy_session_dns_parse_ipv4 (const char *addr, struct sockaddr_in6 *saddr)
-{
-    int res;
-
-    res = inet_pton (AF_INET, addr, &saddr->sin6_addr.s6_addr[12]);
-    if (res == 0)
-        return -1;
-
-    saddr->sin6_addr.s6_addr[10] = 0xff;
-    saddr->sin6_addr.s6_addr[11] = 0xff;
-
-    return 0;
-}
-
-static int
-hev_tproxy_session_dns_parse_ipv6 (const char *addr, struct sockaddr_in6 *saddr)
-{
-    int res;
-
-    res = inet_pton (AF_INET6, addr, &saddr->sin6_addr);
-    if (res == 0)
-        return -1;
-
-    return 0;
-}
-
-static int
-hev_tproxy_session_dns_parse_ip (const char *addr, int port,
-                                 struct sockaddr_in6 *saddr)
-{
-    int res;
-
-    saddr->sin6_family = AF_INET6;
-    saddr->sin6_port = htons (port);
-
-    res = hev_tproxy_session_dns_parse_ipv4 (addr, saddr);
-    if (res == 0)
-        return 0;
-
-    res = hev_tproxy_session_dns_parse_ipv6 (addr, saddr);
-    if (res == 0)
-        return 0;
-
-    return -1;
 }
 
 static int
@@ -161,7 +116,6 @@ static void
 hev_tproxy_session_dns_run (HevTProxySession *base)
 {
     HevTProxySessionDNS *self = HEV_TPROXY_SESSION_DNS (base);
-    static struct sockaddr_in6 addr;
     struct sockaddr *sap;
     struct sockaddr *dap;
     struct msghdr mh;
@@ -178,20 +132,14 @@ hev_tproxy_session_dns_run (HevTProxySession *base)
 
     hev_task_add_fd (hev_task_self (), fd, POLLIN | POLLOUT);
 
-    if (addr.sin6_family == 0) {
-        const char *upstream;
-
-        upstream = hev_config_get_dns_upstream ();
-        hev_tproxy_session_dns_parse_ip (upstream, 53, &addr);
-    }
-
     res = hev_tproxy_session_dns_bind (self, fd);
     if (res < 0)
         goto exit;
 
     res = hev_task_io_socket_sendto (fd, self->buffer, self->size, 0,
-                                     (struct sockaddr *)&addr, sizeof (addr),
-                                     io_yielder, self);
+                                     (struct sockaddr *)self->upstream,
+                                     sizeof (*self->upstream), io_yielder,
+                                     self);
     if (res <= 0)
         goto exit;
 

@@ -10,7 +10,10 @@
 #ifndef __HEV_CONFIG_H__
 #define __HEV_CONFIG_H__
 
+#include <netinet/in.h>
+
 typedef struct _HevConfigServer HevConfigServer;
+typedef struct _HevConfigDNS HevConfigDNS;
 
 struct _HevConfigServer
 {
@@ -25,6 +28,13 @@ struct _HevConfigServer
     char addr[256];
 };
 
+struct _HevConfigDNS
+{
+    char addr[256];
+    char port[8];
+    struct sockaddr_in6 upstream;
+};
+
 int hev_config_init (const char *path);
 
 unsigned int hev_config_get_workers (void);
@@ -34,9 +44,8 @@ const char *hev_config_get_tcp_address (void);
 const char *hev_config_get_tcp_port (void);
 const char *hev_config_get_udp_address (void);
 const char *hev_config_get_udp_port (void);
-const char *hev_config_get_dns_upstream (void);
-const char *hev_config_get_dns_address (void);
-const char *hev_config_get_dns_port (void);
+int hev_config_get_dns_count (void);
+HevConfigDNS *hev_config_get_dns (int index);
 
 int hev_config_get_misc_task_stack_size (void);
 int hev_config_get_misc_udp_recv_buffer_size (void);

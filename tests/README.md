@@ -41,7 +41,7 @@ sudo apt-get install -y iproute2 nftables python3 build-essential
 |---|---|
 | TCP | IPv4/IPv6 echo, upload digest, download, concurrency, half-close, refused target, upstream down, abrupt close / RST |
 | UDP | IPv4/IPv6, UDP-in-UDP and UDP-in-TCP, reply source, fullcone, max/oversize datagram, idle timeout, `udp-address` |
-| DNS | forwarding to the upstream, IPv4/IPv6 resolver and upstream, reply source, many clients, garbage |
+| DNS | forwarding to the upstream, IPv4/IPv6 resolver and upstream, upstream port, multiple instances, reply source, many clients, garbage |
 | SOCKS5 auth | valid / wrong / missing credentials, pipeline mode |
 | config / process | every config key, listeners on/off, workers, timeouts, logging, `limit-nofile`, daemon + pid file, signals, bad config |
 | benchmarks | TCP throughput + CPU (1 and 4 workers), UDP throughput/loss (both relay modes), TCP/UDP/DNS latency, connection rate, memory per session |
