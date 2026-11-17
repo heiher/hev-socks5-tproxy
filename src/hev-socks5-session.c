@@ -25,6 +25,9 @@ hev_socks5_session_run (HevTProxySession *base)
 
     LOG_D ("%p socks5 session run", base);
 
+    if (!hev_socks5_get_timeout (HEV_SOCKS5 (base)))
+        return;
+
     srv = hev_config_get_socks5_server ();
 
     res = hev_socks5_client_connect (HEV_SOCKS5_CLIENT (base), srv->addr,

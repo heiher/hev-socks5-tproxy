@@ -126,6 +126,9 @@ hev_tproxy_session_dns_run (HevTProxySession *base)
 
     LOG_D ("tproxy session dns run");
 
+    if (!self->timeout)
+        return;
+
     fd = hev_task_io_socket_socket (AF_INET6, SOCK_DGRAM, 0);
     if (fd < 0)
         return;
