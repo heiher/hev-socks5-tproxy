@@ -107,6 +107,7 @@ class Bed:
     P_SOURCE = 7003
     P_DIGEST = 7004
     P_COUNT = 7005
+    P_PING = 7007                     # TCP: single threaded echo
     P_REFLECT = 7006                  # UDP: answers from another port
     P_REFLECT_FROM = 7007
     P_CTRL = 7100
