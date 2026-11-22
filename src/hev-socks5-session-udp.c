@@ -35,9 +35,9 @@ typedef struct _HevSocks5UDPFrame HevSocks5UDPFrame;
 struct _HevSocks5UDPFrame
 {
     HevListNode node;
-    HevSocks5Addr addr;
     void *data;
     size_t len;
+    HevSocks5Addr addr;
 };
 
 static int
@@ -339,18 +339,21 @@ hev_socks5_session_udp_send (HevSocks5SessionUDP *self, void *data, size_t len,
                              struct sockaddr *addr)
 {
     HevSocks5UDPFrame *frame;
+    HevSocks5Addr saddr;
+    int alen;
 
     if (self->frames > UDP_POOL_SIZE)
         return -1;
 
-    frame = hev_malloc (sizeof (HevSocks5UDPFrame));
+    alen = hev_socks5_addr_from_sockaddr6 (&saddr, (struct sockaddr_in6 *)addr);
+    frame = hev_malloc (offsetof (HevSocks5UDPFrame, addr) + alen);
     if (!frame)
         return -1;
 
     frame->len = len;
     frame->data = data;
     memset (&frame->node, 0, sizeof (frame->node));
-    hev_socks5_addr_from_sockaddr6 (&frame->addr, (struct sockaddr_in6 *)addr);
+    memcpy (&frame->addr, &saddr, alen);
 
     self->frames++;
     hev_list_add_tail (&self->frame_list, &frame->node);
